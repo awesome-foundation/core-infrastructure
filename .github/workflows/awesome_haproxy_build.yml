@@ -1,0 +1,101 @@
+name: awesome-haproxy docker image
+
+env:
+  REPOSITORY: awesome-haproxy
+  BUILD_DIRECTORY: awesome-haproxy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/awesome_haproxy_*.yml'
+      - 'awesome-haproxy/*'
+      - '!**/*.md'
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - labeled
+    paths:
+      - '.github/workflows/awesome_haproxy_*.yml'
+      - 'awesome-haproxy/*'
+      - '!**/*.md'
+permissions:
+  id-token: write   # for AWS access via OIDC
+  contents: read    # This is required for actions/checkout@v3
+  pull-requests: write # Needed to comment on PRs
+
+jobs:
+  build:
+    name: Build for ${{ matrix.aws_account_stage}}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - aws_account_stage: dev
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+            should_run: true
+          - aws_account_stage: test
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_TEST }}
+            should_run: true
+          - aws_account_stage: prod
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_PROD }}
+            should_run: ${{ github.event_name != 'pull_request' || github.event.pull_request.labels.*.name == 'deploy-pr' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        if: ${{ matrix.should_run }}
+
+      - name: Configure AWS credentials for deployment environment
+        if: ${{ matrix.should_run }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ matrix.aws_role_to_assume }}
+          aws-region: eu-central-1
+
+      - name: Test AWS access credentials for dev account
+        if: ${{ matrix.should_run }}
+        run: aws sts get-caller-identity
+
+      - name: Login to Amazon ECR
+        if: ${{ matrix.should_run }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repository exists, create if not
+        if: ${{ matrix.should_run }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          aws ecr describe-repositories --repository-names "${REPOSITORY}" || aws ecr create-repository --repository-name "${REPOSITORY}"
+          echo REGISTRY="${ECR_REGISTRY}" >> "$GITHUB_ENV"
+
+      - name: Docker meta
+        if: ${{ matrix.should_run }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: "${{ env.REGISTRY }}/${{ env.REPOSITORY }}"
+          # set the latest tag only when it's not a pull request
+          flavor: ${{ github.event_name == 'pull_request' && 'latest=false' || 'latest=true' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: true
+
+      - name: Build and push
+        if: ${{ matrix.should_run }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_DIRECTORY }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+            REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+          push: true

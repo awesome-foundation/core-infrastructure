@@ -1,0 +1,81 @@
+name: Sync AWS SSO users
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    paths:
+      - '.github/workflows/aws_sso_users.yml'
+      - 'aws_sso/sync_aws_sso_users.py'
+      - 'aws_sso/requirements.txt'
+      - 'aws_sso_users.yml'
+      - '!**/*.md'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/aws_sso_users.yml'
+      - 'aws_sso/sync_aws_sso_users.py'
+      - 'aws_sso/requirements.txt'
+      - 'aws_sso_users.yml'
+      - '!**/*.md'
+permissions:
+  id-token: write   # for AWS access via OIDC
+  contents: read    # This is required for actions/checkout@v3
+  pull-requests: write # Needed to comment on PRs
+
+
+jobs:
+  deploy-aws-sso:
+    name: Sync AWS SSO users
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for deployment environment
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_ROOT }}
+          aws-region: eu-central-1
+
+      - name: Test AWS access credentials for AWS account
+        run: aws sts get-caller-identity
+
+      - name: Setup python 3.8 with cache
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install requirements
+        run: pip install -r aws_sso/requirements.txt
+
+      - name: Dry run AWS SSO users sync if PR
+        run: python3 aws_sso/sync_aws_sso_users.py aws_sso_users.yml --dry-run | tee sso_sync_dryrun.txt
+        if: github.event_name == 'pull_request'
+
+      - name: overwrite parts of the comment file
+        if: github.event_name == 'pull_request' && (success() || failure())
+        env:
+          FILE_PATH: sso_sync_dryrun.txt
+        run: |
+          echo "# Dry run AWS SSO users sync" > tmp
+          echo "\`\`\`" >> tmp
+          cat $FILE_PATH >> tmp
+          echo "\`\`\`" >> tmp
+          mv tmp $FILE_PATH
+
+      - name: Preview pull request comment
+        uses: thollander/actions-comment-pull-request@v2
+        if: github.event_name == 'pull_request' && (success() || failure())
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filePath: sso_sync_dryrun.txt
+          comment_tag: preview
+          mode: recreate
+
+      - name: Sync AWS SSO users if not PR
+        run: python3 aws_sso/sync_aws_sso_users.py aws_sso_users.yml
+        if: github.event_name != 'pull_request'

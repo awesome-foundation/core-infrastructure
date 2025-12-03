@@ -1,0 +1,78 @@
+// Use https://jsonformatter.curiousconcept.com/ with the following settings
+// to convert the contents of this file to config file format
+// Settings:
+//   JSON Template: Compact
+//   JSON Spec: Skip Validation
+//   Fix JSON OFF
+//
+// ALTERNATIVELY:
+// cat log-format.json | grep -v "//" | sed 's/^[ \t]*//'  | tr -d '\n'
+{
+    "conn":{
+        "act":%ac,
+        "fe":%fc,
+        "be":%bc,
+        "srv":%sc
+    },
+    "queue":{
+        "backend":%bq,
+        "srv":%sq
+    },
+    "time":{
+        "tq":%Tq,
+        "tw":%Tw,
+        "tc":%Tc,
+        "tr":%Tr,
+        "tt":%Tt,
+        "ta":%Ta,
+        "tu":%Tu
+    },
+    "termination_state":"%tsc",
+    "retries":%rc,
+    "network":{
+        "client_ip":"%ci",
+        "client_port":%cp,
+        "frontend_ip":"%fi",
+        "frontend_port":%fp
+    },
+    "request":{
+        "id":"%ID",
+        "method":"%HM",
+        "bytes":%U,
+        "uri":"%[capture.req.uri,json(utf8s)]",
+        "protocol":"%HV",
+        "cookie":"%CC",
+        "header":{
+            "host":"%[capture.req.hdr(0),json(utf8s)]",
+            "cf_connecting_ip":"%[capture.req.hdr(1),json(utf8s)]",
+            "x_forwarded_for":"%[capture.req.hdr(2),json(utf8s)]",
+            "x_amzn_trace_id":"%[capture.req.hdr(3),json(utf8s)]",
+            "referer":"%[capture.req.hdr(4),json(utf8s)]",
+            "useragent":"%[capture.req.hdr(5),json(utf8s)]",
+            "cf_ray":"%[capture.req.hdr(6),json(utf8s)]",
+            "x_datadog_trace_id":"%[capture.req.hdr(7),json(utf8s)]",
+            "x_datadog_parent_id":"%[capture.req.hdr(8),json(utf8s)]"
+        },
+        "location":{
+            "timezone":"%[capture.req.hdr(9),json(utf8s)]",
+            "city":"%[capture.req.hdr(10),json(utf8s)]",
+            "country":"%[capture.req.hdr(11),json(utf8s)]",
+            "continent":"%[capture.req.hdr(12),json(utf8s)]",
+            "longitude":"%[capture.req.hdr(13),json(utf8s)]",
+            "latitude":"%[capture.req.hdr(14),json(utf8s)]",
+            "region":"%[capture.req.hdr(15),json(utf8s)]",
+            "region_code":"%[capture.req.hdr(16),json(utf8s)]",
+            "postal_code":"%[capture.req.hdr(17),json(utf8s)]"
+        }
+    },
+    "name":{
+        "backend":"%b",
+        "frontend":"%ft",
+        "server":"%s"
+    },
+    "response":{
+        "status_code":%ST,
+        "bytes":%B,
+        "cookie":"%CS"
+    }
+}

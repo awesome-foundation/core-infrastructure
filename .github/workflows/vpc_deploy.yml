@@ -1,0 +1,56 @@
+name: VPC deploy
+
+env:
+  TEMPLATE_FILENAME: awesome-vpc/awesome-vpc.yml
+  AWS_STACK_NAME: awesome-vpc
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/vpc_*.yml'
+      - 'awesome-vpc/*.yml'
+      - '!**/*.md'
+
+permissions:
+  id-token: write   # for AWS access via OIDC
+  contents: read    # This is required for actions/checkout@v3
+
+jobs:
+  deploy-vpc:
+    name: VPC deploy
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include: # There is a separate workflow for PR based development = vpc_pull_request.yml
+          - aws_account_stage: dev
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+          - aws_account_stage: test
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_TEST }}
+          - aws_account_stage: prod
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_PROD }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for deployment environment
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ matrix.aws_role_to_assume }}
+          aws-region: eu-central-1
+
+      - name: Test AWS access credentials for ${{ matrix.aws_account_stage }} account
+        run: aws sts get-caller-identity
+
+      - name: Download aws-cloudformation/rain
+        run: |
+          gh release download -R aws-cloudformation/rain --pattern '*_linux-amd64.zip' -D $RUNNER_TOOL_CACHE v1.16.1
+          unzip -ojq $RUNNER_TOOL_CACHE/*.zip -d $RUNNER_TOOL_CACHE
+          echo "$RUNNER_TOOL_CACHE" >> $GITHUB_PATH
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Deploy Cloudformation template to ${{ matrix.aws_account_stage }} account
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=${{ matrix.aws_account_stage }}

@@ -1,0 +1,53 @@
+# put this in ~/.aws/config
+# TODO: update account IDs, etc
+[default]
+
+[profile awesome]
+
+[profile awesome-dev-developer]
+sso_session=awesome
+sso_account_id=112233445566
+sso_role_name=DeveloperAccess
+region=eu-central-1
+
+[profile awesome-dev-admin]
+sso_session=awesome
+sso_account_id=112233445566
+sso_role_name=AdministratorAccess
+region=eu-central-1
+
+[profile awesome-prod-developer]
+sso_session=awesome
+sso_account_id=223344556677
+sso_role_name=DeveloperAccess
+region=eu-central-1
+
+[profile awesome-prod-admin]
+sso_session=awesome
+sso_account_id=223344556677
+sso_role_name=AdministratorAccess
+region=eu-central-1
+
+[profile awesome-test-developer]
+sso_session=awesome
+sso_account_id=334445566778
+sso_role_name=DeveloperAccess
+region=eu-central-1
+
+[profile awesome-test-admin]
+sso_session=awesome
+sso_account_id=334445566778
+sso_role_name=AdministratorAccess
+region=eu-central-1
+
+[profile awesome-root-admin]
+sso_session=awesome
+sso_account_id=667788990011
+sso_role_name=AdministratorAccess
+region=eu-central-1
+
+[sso-session awesome]
+sso_start_url=https://awesome.awsapps.com/start/
+sso_region=eu-central-1
+sso_registration_scopes=sso:account:access
+
