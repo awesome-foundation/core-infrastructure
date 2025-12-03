@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Awesome Foundation SSO stack - defines SSO Groups, Permission Sets, and Assignments.
+
+# SSO Groups and Users are automatically provisioned and can't be fetched
+# using CloudFormation, only using AWS API. We'll hardcode them here for now.
+Mappings:
+  ConfigMap:
+    OrgAccount:
+      AccountIdProd: '123456789012' # TODO: FILL IN WITH YOUR PROD ACCOUNT ID
+      AccountIdDev: '123456789013' # TODO: FILL IN WITH YOUR DEV ACCOUNT ID
+      AccountIdTest: '123456789014' # TODO: FILL IN WITH YOUR TEST ACCOUNT ID
+  SSOMap:
+    Instance:
+      IdentityStore: 'd-11aa22bb33' # TODO: FILL IN WITH YOUR SSO IDENTITY STORE ID
+      IAMDirectory: 'arn:aws:sso:::instance/ssoins-11aa22bb33' # TODO: FILL IN WITH YOUR SSO INSTANCE ARN
+
+Resources:
+  ## GROUPS
+  Developers:
+    Type: AWS::IdentityStore::Group
+    Properties:
+      DisplayName: 'Developers'
+      Description: 'Software engineers'
+      IdentityStoreId: !FindInMap [SSOMap, Instance, IdentityStore]
+
+  Ops:
+    Type: AWS::IdentityStore::Group
+    Properties:
+      DisplayName: 'Ops'
+      Description: 'Operations people'
+      IdentityStoreId: !FindInMap [SSOMap, Instance, IdentityStore]
+
+  ## PERMISSION SETS
+  DeveloperAccess:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      Name: 'DeveloperAccess'
+      Description: 'Permissions for software engineers'
+      SessionDuration: 'PT12H'
+      ManagedPolicies:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AWSCloudTrail_ReadOnlyAccess'
+      InlinePolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:CancelUpdateStack
+              - cloudformation:ContinueUpdateRollback
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:ValidateTemplate
+              - ecs:UpdateService
+              - ecs:StopTask
+              - ecs:RunTask
+              - ecs:ExecuteCommand
+              - iam:GetRole
+              - iam:PassRole
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+              - kms:ReEncrypt*
+              - kms:DescribeKey
+              - logs:DeleteQueryDefinition
+              - logs:PutQueryDefinition
+              - logs:StartLiveTail
+              - logs:StopQuery
+              - pi:GetDimensionKeyDetails # Performance Insights
+              - rds:CreateDBClusterSnapshot
+              - s3:AbortMultipartUpload
+              - logs:StopLiveTail
+              - ses:DeleteSuppressedDestination
+              - ses:PutSuppressedDestination
+              - ses:GetSuppressedDestination
+              - s3:ListBucketMultipartUploads
+              - s3:ListMultipartUploadParts
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:RestoreObject
+              - sqs:DeleteMessage
+              - sqs:ReceiveMessage
+              - sqs:SendMessage
+              - ssm:PutParameter
+              - ssm:DeleteParameter
+              - ssm:GetParameter*
+              - ssm:DeleteParameters
+              - ssm:DescribeParameters
+              - support:*
+            Resource: '*'
+
+  AdministratorAccess:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      Name: 'AdministratorAccess'
+      Description: 'Permissions for ops people'
+      SessionDuration: 'PT1H' # 1 hour - the correct production setting
+      # SessionDuration: 'PT12H' # 12 hours - when doing initial deployment/testing
+      ManagedPolicies:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+  ## ASSIGNMENTS
+  ## Assignments link SSO Groups to AWS Accounts, with PermissionSet
+  # AccountIdDev Account Assignments
+  AccountIdDevEngineer:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt DeveloperAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdDev]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Developers.GroupId
+  AccountIdDevAdministratorAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt AdministratorAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdDev]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Ops.GroupId
+
+  # AccountIdTest Account Assignments
+  AccountIdTestEngineer:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt DeveloperAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdTest]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Developers.GroupId
+  AccountIdTestAdministratorAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt AdministratorAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdTest]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Ops.GroupId
+
+  # AccountIdProd Account Assignments
+  AccountIdProdEngineer:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt DeveloperAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdProd]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Developers.GroupId
+
+  AccountIdProdAdministratorAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !FindInMap [SSOMap, Instance, IAMDirectory]
+      PermissionSetArn: !GetAtt AdministratorAccess.PermissionSetArn
+      TargetId: !FindInMap [ConfigMap, OrgAccount, AccountIdProd]
+      TargetType: 'AWS_ACCOUNT'
+      PrincipalType: 'GROUP'
+      PrincipalId: !GetAtt Ops.GroupId

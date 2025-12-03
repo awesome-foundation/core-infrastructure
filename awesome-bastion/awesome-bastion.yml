@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SSH Bastion Host for Database Access
+Parameters:
+  ServiceName:
+    Type: String
+    Description: A name for the service
+  # Server configuration
+  ImageUrl:
+    Type: String
+    Description: The application Docker image
+  ContainerPort:
+    Type: Number
+    Default: 9022
+    Description: What port number the application inside the docker container is binding to
+  # TaskResource = ContainerResource + DataDogContainerResource
+  # CPU/Mem combos are not arbitrary: https://aws.amazon.com/fargate/pricing/#Supported_Configurations
+  TaskCpu:
+    Type: Number
+    Default: 512
+    Description: How much CPU to give the ECS Task. 1024 is 1 CPU
+  TaskMemory:
+    Type: Number
+    Default: 1024
+    Description: How much memory in megabytes to give the ECS Task
+  DesiredCount:
+    Type: Number
+    Default: 2
+    Description: How many copies of the service task to run
+
+Resources:
+# Network Load Balancer (exposes the container to the Internet)
+  NetworkLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+        # The load balancer is placed into the public subnets, so that traffic
+        # from the internet can reach the load balancer directly via the internet gateway
+        - !ImportValue 'awesome-vpc:SubnetPublicOne'
+        - !ImportValue 'awesome-vpc:SubnetPublicTwo'
+      Type: network
+
+  NetworkLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref 'NetworkLBTargetGroup'
+          Type: 'forward'
+      LoadBalancerArn: !Ref 'NetworkLB'
+      Port: 22
+      Protocol: TCP
+
+  NetworkLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30   # Allows 10 or 30 :/
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '9022'
+      HealthCheckTimeoutSeconds: 10    # Must be 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: ip
+      Port: !Ref 'ContainerPort'
+      Protocol: 'TCP'
+      VpcId: !ImportValue 'awesome-vpc:VPCId'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '5'
+        - Key: preserve_client_ip.enabled
+          Value: 'true'
+
+  BastionServiceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic from Public Subnets (where NLB is)
+      VpcId: !ImportValue 'awesome-vpc:VPCId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9022
+          ToPort: 9022
+          CidrIp: 0.0.0.0/0 # The internet (because of preserve_client_ip.enabled = true)
+          Description: The Internet (all traffic on port 9022)
+
+  # ECS
+  # The task definition. This is a simple metadata description of what
+  # container to run, and what resource requirements it has.
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    # Makes sure the log group is created before it is used.
+    Properties:
+      Family: !Ref 'ServiceName'
+      Cpu: !Ref 'TaskCpu'
+      Memory: !Ref 'TaskMemory'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !ImportValue 'awesome-web:ECSTaskExecutionRole'
+      TaskRoleArn: !Ref 'TaskRole'
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Image: !Ref 'ImageUrl'
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref LogGroup
+              awslogs-stream-prefix: ecs
+
+  # The service. The service is a resource which allows you to run multiple
+  # copies of a type of task, and gather up their logs and metrics, as well
+  # as monitor the number of running tasks and replace any that have crashed
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: NetworkLBListener
+    Properties:
+      Cluster: !ImportValue 'awesome-web:ClusterName'
+      CapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Base: 0
+          Weight: 1
+      DesiredCount: !Ref 'DesiredCount'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref BastionServiceSG
+            - !ImportValue 'awesome-vpc:SecurityGroupVeryPermissive'
+          Subnets:
+            - !ImportValue 'awesome-vpc:SubnetPrivateOne'
+            - !ImportValue 'awesome-vpc:SubnetPrivateTwo'
+      TaskDefinition: !Ref 'TaskDefinition'
+      LoadBalancers:
+        - ContainerName: !Ref 'ServiceName'
+          ContainerPort: !Ref 'ContainerPort'
+          TargetGroupArn: !Ref 'NetworkLBTargetGroup'
+      EnableECSManagedTags: true
+      PropagateTags: SERVICE
+
+  # Log groups
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 90
+      LogGroupName: !Sub '/app/${ServiceName}'
+
+  # Role used for execution of ECS Tasks
+  TaskRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ecs-tasks.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "ssm-access"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - ssm:DescribeParameters
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource:
+                  - !Sub 'arn:aws:ssm:*:*:parameter/${ServiceName}/*'
+  TaskInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: "TaskRole"
+
+  DNSEntry:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Sub
+        - '${ServiceName}.${DNSZoneName}'
+        - DNSZoneName: !ImportValue 'awesome-vpc:DNSZoneName'
+      HostedZoneId: !ImportValue 'awesome-vpc:DNSZoneId'
+      Type: CNAME
+      TTL: 300
+      ResourceRecords:
+        - !GetAtt NetworkLB.DNSName

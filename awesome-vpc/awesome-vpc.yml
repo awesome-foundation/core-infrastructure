@@ -1,0 +1,523 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Awesome Foundation VPC v0.2
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The stage becomes the subdomain on the base domain, and all resources are provisioned under it for easy discovery.
+    AllowedValues:
+      - dev
+      - test
+      - prod
+  BaseDomainName:
+    Type: String
+    Description: This domain name is used for internal networking and not meant to be exposed to the public.
+    Default: example.dev # We hardcode this in the template, but changing it has no effect and even if it did it would break everything.
+
+Mappings:
+  # used https://www.calculator.net/ip-subnet-calculator.html to navigate
+  NetworkConfig:
+    StagePrefix:
+      dev: '10.8'
+      test: '10.9'
+      prod: '10.10'
+    NetworkSuffix:
+      VPC: '0.0/16'
+      SubnetPublicOne: '0.0/20' # 4k hosts, 0-15
+      SubnetPublicTwo: '16.0/20' # 4k hosts, 16-31
+      SubnetPublicThree: '32.0/20' # 4k hosts, 32-47
+      # unallocated: 48.0/20 # 4k hosts, 48 - 63
+      SubnetPrivateOne: '64.0/18' # 16k hosts, 64 - 127
+      SubnetPrivateTwo: '128.0/18' # 16k hosts, 128 - 191
+      SubnetPrivateThree: '192.0/18' # 16k hosts, 192 - 255
+
+Resources:
+  ## BEGIN networking
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'VPC']
+      Tags:
+        - Key: Name
+          Value: awesome-vpc
+
+  SubnetPublicOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPublicOne']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: awesome-PublicOne
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "This is a public subnet and we want to allow public IP addresses."
+
+  SubnetPublicTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPublicTwo']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: awesome-PublicTwo
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "This is a public subnet and we want to allow public IP addresses."
+
+  # SubnetPublicThree:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone:
+  #       Fn::Select:
+  #         - 2
+  #         - Fn::GetAZs: {Ref: 'AWS::Region'}
+  #     VpcId: !Ref 'VPC'
+  #     CidrBlock: !Join
+  #       - '.'
+  #       - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+  #         - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPublicThree']
+  #     MapPublicIpOnLaunch: true
+      # Tags:
+      #   - Key: Name
+      #     Value: awesome-PublicThree
+  #   Metadata:
+  #     cfn_nag:
+  #       rules_to_suppress:
+  #         - id: W33
+  #           reason: "This is a public subnet and we want to allow public IP addresses."
+
+  SubnetPrivateOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPrivateOne']
+      Tags:
+        - Key: Name
+          Value: awesome-PrivateOne
+
+  SubnetPrivateTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPrivateTwo']
+      Tags:
+        - Key: Name
+          Value: awesome-PrivateTwo
+
+  # SubnetPrivateThree:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone:
+  #       Fn::Select:
+  #         - 2
+  #         - Fn::GetAZs: {Ref: 'AWS::Region'}
+  #     VpcId: !Ref 'VPC'
+  #     CidrBlock: !Join
+  #       - '.'
+  #       - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+  #         - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPrivateThree']
+      # Tags:
+      #   - Key: Name
+      #     Value: awesome-PrivateThree
+
+  # Setup networking resources for the public subnets. Resources
+  # in the public subnets have public IP addresses and the routing table
+  # sends network traffic via the internet gateway.
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: awesome-vpc
+
+  GatewayAttachement:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'VPC'
+      InternetGatewayId: !Ref 'InternetGateway'
+
+  RouteTablePublic:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-public
+
+  RoutePublic:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachement
+    Properties:
+      RouteTableId: !Ref 'RouteTablePublic'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+
+  RouteTableAssociationSubnetPublicOne:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetPublicOne
+      RouteTableId: !Ref RouteTablePublic
+
+  RouteTableAssociationSubnetPublicTwo:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetPublicTwo
+      RouteTableId: !Ref RouteTablePublic
+
+  # RouteTableAssociationSubnetPublicThree:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref SubnetPublicThree
+  #     RouteTableId: !Ref RouteTablePublic
+
+  # Setup networking resources for the private subnets. Resources
+  # in these subnets have only private IP addresses, and must use a NAT
+  # gateway to talk to the internet. We launch three NAT gateways, one for
+  # each private subnet.
+  ElasticIPNatGatewayOne:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachement
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: awesome-nat-one
+
+  ElasticIPNatGatewayOneDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref DNSZone
+      Name: !Sub 'nat1.${Stage}.${BaseDomainName}'
+      Type: A
+      TTL: '60'
+      ResourceRecords:
+        - !GetAtt ElasticIPNatGatewayOne.PublicIp
+
+  ElasticIPNatGatewayTwo:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachement
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: awesome-nat-two
+
+  ElasticIPNatGatewayTwoDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref DNSZone
+      Name: !Sub 'nat2.${Stage}.${BaseDomainName}'
+      Type: A
+      TTL: '60'
+      ResourceRecords:
+        - !GetAtt ElasticIPNatGatewayTwo.PublicIp
+
+  # ElasticIPNatGatewayThree:
+  #   Type: AWS::EC2::EIP
+  #   DependsOn: GatewayAttachement
+  #   Properties:
+  #       Domain: vpc
+      # Tags:
+      #   - Key: Name
+      #     Value: awesome-nat-three
+
+  # ElasticIPNatGatewayThreeDNSRecord:
+  #   Type: AWS::Route53::RecordSet
+  #   Properties:
+  #     HostedZoneId: !Ref DNSZone
+  #     Name: !Sub 'nat3.${Stage}.${BaseDomainName}'
+  #     Type: A
+  #     TTL: '60'
+  #     ResourceRecords:
+  #       - !GetAtt ElasticIPNatGatewayThree.PublicIp
+
+  NatGatewayOne:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPNatGatewayOne.AllocationId
+      SubnetId: !Ref SubnetPublicOne
+      Tags:
+        - Key: Name
+          Value: awesome-nat-one
+
+  NatGatewayTwo:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPNatGatewayTwo.AllocationId
+      SubnetId: !Ref SubnetPublicTwo
+      Tags:
+        - Key: Name
+          Value: awesome-nat-two
+
+  # NatGatewayThree:
+  #   Type: AWS::EC2::NatGateway
+  #   Properties:
+  #     AllocationId: !GetAtt ElasticIPNatGatewayThree.AllocationId
+  #     SubnetId: !Ref SubnetPublicThree
+      # Tags:
+      #   - Key: Name
+      #     Value: awesome-nat-three
+
+  RouteTablePrivateOne:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-private-one
+
+  RoutePrivateOne:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateOne
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayOne
+
+  RouteTablePrivateOneAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateOne
+      SubnetId: !Ref SubnetPrivateOne
+
+  RouteTablePrivateTwo:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-private-two
+
+  RoutePrivateTwo:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateTwo
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayTwo
+
+  RouteTablePrivateTwoAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateTwo
+      SubnetId: !Ref SubnetPrivateTwo
+
+  # RouteTablePrivateThree:
+  #   Type: AWS::EC2::RouteTable
+  #   Properties:
+  #     VpcId: !Ref 'VPC'
+      # Tags:
+      #   - Key: Name
+      #     Value: awesome-private-three
+
+  # RoutePrivateThree:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref RouteTablePrivateThree
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     NatGatewayId: !Ref NatGatewayThree
+
+  # RouteTablePrivateThreeAssociation:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     RouteTableId: !Ref RouteTablePrivateThree
+  #     SubnetId: !Ref SubnetPrivateThree
+
+  # This is a security group that allows any resources in it to talk to each other.
+  # It also allows resources in public subnets to receive public traffic.
+  SecurityGroupVeryPermissive:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: No restrictions on traffic
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+          - Description: Allow access from anywhere
+            CidrIp: 0.0.0.0/0
+            IpProtocol: -1
+      Tags:
+        - Key: Name
+          Value: awesome-very-permissive
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F1000
+            reason: "This is an explicitly permissive Security Group, and we won't be defining egress rules on it."
+          - id: W2
+            reason: "This is an explicitly permissive Security Group, and is expected to have wide open ingress rules."
+          - id: W9
+            reason: "This is an explicitly permissive Security Group, and is expected to have wide open ingress rules."
+          - id: W42
+            reason: "This is an explicitly permissive Security Group, and is expected to have wide open ingress rules."
+
+  ## END networking
+
+  # This is a DNS zone where we map all resources into.
+  # We do this in the VPC stack because you have to delegate it in the parent domain before SSL certificates and other things work.
+  DNSZone:
+    Type: "AWS::Route53::HostedZone"
+    Properties:
+      Name: !Sub '${Stage}.${BaseDomainName}'
+      HostedZoneConfig:
+        Comment: !Sub 'CloudFormation-Managed zone for ${Stage}.${BaseDomainName}'
+
+  # This is a legacy thing, but needed for some RDS instances
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Fargate network stack DB Subnet group
+      SubnetIds:
+        - !Ref 'SubnetPrivateOne'
+        - !Ref 'SubnetPrivateTwo'
+        # - !Ref 'SubnetPrivateThree'
+
+  # If compute resources need to access DynamoDB this allows them to talk to DynamoDB directly
+  # without needing to go via the NAT gateway. This reduces the amount of bandwidth through
+  # the gateway, reducing cost.
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Principal: "*"
+            Resource: "*"
+      RouteTableIds:
+        - !Ref 'RouteTablePrivateOne'
+        - !Ref 'RouteTablePrivateTwo'
+        # - !Ref 'RouteTablePrivateThree'
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcId: !Ref 'VPC'
+
+
+# We output values useful to other Cloudformation stacks
+Outputs:
+  VPCId:
+    Description: The ID of the VPC that this stack is deployed in
+    Value: !Ref 'VPC'
+    Export:
+      Name: !Sub "${AWS::StackName}:VPCId"
+  SubnetPublicOne:
+    Description: Public subnet one
+    Value: !Ref 'SubnetPublicOne'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPublicOne"
+  SubnetPublicTwo:
+    Description: Public subnet two
+    Value: !Ref 'SubnetPublicTwo'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPublicTwo"
+  # SubnetPublicThree:
+  #   Description: Public subnet three
+  #   Value: !Ref 'SubnetPublicThree'
+  #   Export:
+  #     Name: !Sub "${AWS::StackName}:SubnetPublicThree"
+  SubnetPrivateOne:
+    Description: Private subnet one
+    Value: !Ref 'SubnetPrivateOne'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPrivateOne"
+  SubnetPrivateTwo:
+    Description: Private subnet two
+    Value: !Ref 'SubnetPrivateTwo'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPrivateTwo"
+  # SubnetPrivateThree:
+  #   Description: Private subnet three
+  #   Value: !Ref 'SubnetPrivateThree'
+  #   Export:
+  #     Name: !Sub "${AWS::StackName}:SubnetPrivateThree"
+  Stage:
+    Description: The stage
+    Value: !Ref 'Stage'
+    Export:
+      Name: !Sub "${AWS::StackName}:Stage"
+  DBSubnetGroup:
+    Description: The DB Subnet Group
+    Value: !Ref 'DBSubnetGroup'
+    Export:
+      Name: !Sub "${AWS::StackName}:DBSubnetGroup"
+  SecurityGroupVeryPermissive:
+    Description: The very permissive security group
+    Value: !Ref 'SecurityGroupVeryPermissive'
+    Export:
+      Name: !Sub "${AWS::StackName}:SecurityGroupVeryPermissive"
+  DNSZoneId:
+    Description: The ID of the Route53 DNS zone
+    Value: !Ref 'DNSZone'
+    Export:
+      Name: !Sub '${AWS::StackName}:DNSZoneId'
+  DNSZoneName:
+    Description: The name of the Route53 DNS zone
+    Value: !Sub '${Stage}.${BaseDomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}:DNSZoneName'
+  DNSZoneServers:
+    Description: The name servers of the Route53 DNS zone
+    Value: !Join [', ', !GetAtt 'DNSZone.NameServers']
+    Export:
+      Name: !Sub '${AWS::StackName}:DNSZoneServers'
+  BaseDomainName:
+    Description: The base domain name
+    Value: !Ref BaseDomainName
+    Export:
+      Name: !Sub '${AWS::StackName}:BaseDomainName'
+  AccountName:
+    Description: The descriptive account name
+    Value: !Sub 'awesome-${Stage}'
+    Export:
+      Name: !Sub '${AWS::StackName}:AccountName'
+  NatGatewayOnePublicIP:
+    Description: The public IP of the first NAT gateway
+    Value: !GetAtt 'ElasticIPNatGatewayOne.PublicIp'
+    Export:
+      Name: !Sub '${AWS::StackName}:NatGatewayOnePublicIP'
+  NatGatewayTwoPublicIP:
+    Description: The public IP of the second NAT gateway
+    Value: !GetAtt 'ElasticIPNatGatewayTwo.PublicIp'
+    Export:
+      Name: !Sub '${AWS::StackName}:NatGatewayTwoPublicIP'
+  # NatGatewayThreePublicIP:
+  #   Description: The public IP of the second NAT gateway
+  #   Value: !GetAtt 'ElasticIPNatGatewayThree.PublicIp'
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}:NatGatewayThreePublicIP'

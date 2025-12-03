@@ -1,0 +1,30 @@
+name: Bastion build and deploy on PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - labeled
+    paths:
+      - '.github/workflows/bastion_*.yml'
+      - 'awesome-bastion/*'
+      - '!**/*.md'
+permissions:
+  id-token: write   # for AWS access via OIDC
+  contents: read    # This is required for actions/checkout@v3
+  pull-requests: write # Needed to comment on PRs
+
+jobs:
+  deploy:
+    name: Shared Bastion workflow
+    uses: ./.github/workflows/bastion_shared_workflow.yml
+    strategy:
+      matrix:
+        include:
+          - aws_account_stage: dev
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+    secrets: inherit
+    with:
+      AWS_ACCOUNT_STAGE: ${{ matrix.aws_account_stage }}
+      AWS_ROLE_TO_ASSUME: ${{ matrix.aws_role_to_assume }}

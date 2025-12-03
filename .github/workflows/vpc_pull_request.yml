@@ -1,0 +1,88 @@
+name: VPC test and deploy on PR
+
+env:
+  TEMPLATE_FILENAME: awesome-vpc/awesome-vpc.yml
+  AWS_STACK_NAME: awesome-vpc
+  AWS_DEPLOY_ENVIRONMENT: dev
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - labeled
+    paths:
+      - '.github/workflows/vpc_*.yml'
+      - 'awesome-vpc/*.yml'
+      - '!**/*.md'
+
+permissions:
+  id-token: write   # for AWS access via OIDC
+  contents: read    # This is required for actions/checkout@v3
+  pull-requests: write # Needed to comment on PRs
+
+jobs:
+  deploy-awesome-vpc:
+    name: VPC test and maybe deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for deployment environment
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+          aws-region: eu-central-1
+
+      - name: Test AWS access credentials for dev account
+        run: aws sts get-caller-identity
+
+      - name: Download aws-cloudformation/rain
+        run: |
+          gh release download -R aws-cloudformation/rain --pattern '*_linux-amd64.zip' -D $RUNNER_TOOL_CACHE v1.16.1
+          unzip -ojq $RUNNER_TOOL_CACHE/*.zip -d $RUNNER_TOOL_CACHE
+          echo "$RUNNER_TOOL_CACHE" >> $GITHUB_PATH
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create Cloudformation ChangeSet
+        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT
+
+      - name: Get latest changeset ID
+        run: aws cloudformation list-change-sets --stack-name $AWS_STACK_NAME --query 'Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetId' --output text > changeset-id
+
+      - name: Get changeset diff
+        run: aws cloudformation describe-change-set --change-set-name $(cat changeset-id) > describe-change-set.json
+
+      - name: Delete changeset
+        run: aws cloudformation delete-change-set --change-set-name $(cat changeset-id)
+
+      - name: Process diff into Markdown table
+        run: jq -r '.Changes[] | [.ResourceChange.Action, .ResourceChange.LogicalResourceId, .ResourceChange.ResourceType, .ResourceChange.Replacement] | @tsv' describe-change-set.json | awk 'BEGIN {print "| Action | LogicalResourceId | ResourceType | Replacement |"; print "|--------|-----------------|--------------|-------------|"} {print "| " $1 " | " $2 " | " $3 " | " $4 " |"}' > changeset.diff
+
+      - name: Preview changeset
+        uses: thollander/actions-comment-pull-request@v2
+        if: github.event_name == 'pull_request' && (success() || failure())
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filePath: changeset.diff
+          comment_tag: preview
+          mode: recreate
+
+      - name: Deploy Cloudformation template to dev account
+        if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr')
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT | tee rain-deploy.log
+
+      - name: Rain Deploy log
+        uses: thollander/actions-comment-pull-request@v2
+        if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr') && (success() || failure())
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          filePath: rain-deploy.log
+          comment_tag: raindeploy
+          mode: recreate
+

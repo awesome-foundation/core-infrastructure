@@ -1,0 +1,11 @@
+john.doe@example.com:
+  display_name: "John Doe"
+  groups:
+    - Developers
+    - Ops
+
+# user2@example.com:
+#   display_name: "User Two"
+#   groups:
+#     - "Group1"
+#     - "Group3"
