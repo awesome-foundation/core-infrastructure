@@ -90,10 +90,10 @@ listen haproxy
     unique-id-header X-Req-ID
     http-response set-header X-Req-ID %ID
 
-    # requests on .example.dev are private and should not be indexed # TODO: change to your private domain
-    # acl private_hostname hdr(Host) -i -m end .example.dev
-    # http-request set-var(txn.is_private_hostname) bool(true) if private_hostname
-    # http-response set-header x-robots-tag "noindex, nofollow" if { var(txn.is_private_hostname) -m bool }
+    # requests on dev domain are private and should not be indexed
+    acl private_hostname hdr(Host) -i -m end .{{ AWESOME_DEV_DOMAIN | default:"example.dev" }}
+    http-request set-var(txn.is_private_hostname) bool(true) if private_hostname
+    http-response set-header x-robots-tag "noindex, nofollow" if { var(txn.is_private_hostname) -m bool }
 
     use_backend default
 

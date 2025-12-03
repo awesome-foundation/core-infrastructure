@@ -38,6 +38,7 @@ The container supports configuration through environment variables:
 * `HAPROXY_APP_PORT` - Port on which the application listens (default: 8080)
 * `HAPROXY_TIMEOUT_SERVER` - Server timeout (default: 1m)
 * `HAPROXY_HTTP_BUFFER_REQUEST` - Enable HTTP request buffering for slow POST attack mitigation
+* `AWESOME_DEV_DOMAIN` - Domain suffix for dev environments that should have noindex/nofollow headers (default: example.dev)
 
 ### Additional Features
 
