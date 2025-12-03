@@ -10,9 +10,7 @@ The infrastructure follows a layered approach:
 
 1. **Foundation Layer** - VPC, networking, and security components
 2. **Compute Layer** - Web applications, load balancers, and container services
-3. **Data Layer** - Storage and caching solutions
-4. **Access Layer** - Bastion hosts and identity management
-5. **Operational Layer** - CI/CD and scheduled tasks
+3. **Access Layer** - Bastion hosts and identity management
 
 ## Infrastructure Components
 
