@@ -1,5 +1,7 @@
 # Awesome Foundation Core Infrastructure
 
+> **New to this repo?** See the [Bootstrap Guide](./BOOTSTRAP.md) for setting up infrastructure in a new AWS Organization.
+
 This repository contains the Awesome Foundation core infrastructure components. The infrastructure is defined using CloudFormation templates, Docker containers, and automation scripts to ensure consistent deployments across development, testing, and production environments.
 
 ## Architecture Overview
