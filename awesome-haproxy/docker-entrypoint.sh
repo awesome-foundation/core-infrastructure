@@ -1,4 +1,3 @@
-#!/bin/sh
 # NOTE(luka): Copied from https://github.com/haproxytech/haproxy-docker-alpine/blob/main/3.0/docker-entrypoint.sh
 # 	no changes other than the annotated block near the bottom
 set -e

@@ -1,4 +1,5 @@
 # lifted from https://stackoverflow.com/questions/50003378/automatically-set-listenerrule-priority-in-cloudformation-template
+
 import json
 import os
 import random
