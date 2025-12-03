@@ -97,9 +97,7 @@ core-infrastructure/
 ├── awesome-vpc/             # Core VPC infrastructure
 ├── awesome-web/             # Web application infrastructure
 ├── aws_sso/                 # AWS SSO implementation
-├── github_actions_oidc/     # OIDC for GitHub Actions
-├── redis-cache/             # Redis cache instances
-└── s3-buckets/              # S3 bucket configurations
+└── github_actions_oidc/     # OIDC for GitHub Actions
 ```
 
 ## Security Considerations
