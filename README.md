@@ -50,6 +50,31 @@ The infrastructure is deployed across three environments:
 
 Environment-specific configurations are managed through CloudFormation parameters, mappings, and condition statements.
 
+## Why We Use a Dedicated Infrastructure Domain
+
+This infrastructure uses a dedicated domain (e.g., `companyname.dev`) rather than subdomains of the production domain (e.g., `companyname.com`). This is an intentional architectural decision:
+
+**Security Isolation**
+- A compromised dev/test environment cannot affect production DNS or hijack production cookies
+- Wildcard certificates for `*.dev.companyname.dev` are completely isolated from production
+- HSTS preload can be enabled on production without affecting development workflows
+
+**Operational Independence**
+- Infrastructure DNS changes don't risk breaking the customer-facing website
+- Different teams can manage each domain independently (marketing owns `.com`, engineering owns `.dev`)
+- Aggressive TTLs and frequent changes in dev/test won't impact production caching
+
+**Clear Boundaries**
+- Developers immediately know which environment they're working with from the URL
+- Prevents accidental production access when copy-pasting URLs
+- Search engines won't index dev/test content even if `noindex` headers fail (different domain entirely)
+
+**Cookie Scope**
+- Authentication cookies on `.companyname.dev` cannot leak to or from `.companyname.com`
+- Each environment's cookies are naturally isolated
+
+The convention is: `{service}.{stage}.{infra-domain}` (e.g., `api.prod.companyname.dev`).
+
 ## Common Tasks
 
 ### Adding a New Component

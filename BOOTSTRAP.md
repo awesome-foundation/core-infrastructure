@@ -246,10 +246,11 @@ With CI/CD working, deploy the foundational stacks.
 
 ### 4.1 Update Domain Configuration
 
-Before deploying, update the domain in the templates:
+> **Important:** We recommend using a dedicated infrastructure domain (e.g., `companyname.dev`) rather than your production domain (`companyname.com`). See [Why We Use a Dedicated Infrastructure Domain](./README.md#why-we-use-a-dedicated-infrastructure-domain) for the rationale.
 
-1. Edit `awesome-vpc/awesome-vpc.yml` - update the Route53 hosted zone domain
-2. Edit `awesome-web/awesome-web.yml` - update SSL certificate domain
+Before deploying, update the domain in the VPC template:
+
+1. Edit `awesome-vpc/awesome-vpc.yml` - update the Route53 hosted zone domain parameter - THIS CANNOT BE CHANGED LATER
 
 Search for `example.dev` and replace with your domain.
 
