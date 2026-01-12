@@ -17,7 +17,6 @@ name: GitHub Actions OIDC StackSet deploy
 env:
   TEMPLATE_PATH: github_actions_oidc/github_actions.yml
   STACKSET_NAME: github-actions-oidc
-  AWS_REGION: eu-central-1
 
 on:
   workflow_dispatch:
@@ -56,7 +55,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_ROOT }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       - name: Test AWS access
         run: aws sts get-caller-identity
@@ -99,7 +98,7 @@ jobs:
           aws cloudformation create-stack-instances \
             --stack-set-name $STACKSET_NAME \
             --deployment-targets OrganizationalUnitIds=${{ steps.org.outputs.root_id }} \
-            --regions ${{ env.AWS_REGION }} \
+            --regions ${{ vars.AWESOME_AWS_DEFAULT_REGION }} \
             --operation-preferences FailureTolerancePercentage=100,MaxConcurrentPercentage=100 \
             2>/dev/null || echo "Stack instances already exist or operation in progress"
 

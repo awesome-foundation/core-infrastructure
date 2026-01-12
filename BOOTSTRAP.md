@@ -138,9 +138,12 @@ Add these **organization variables**:
 
 | Variable Name | Value |
 |---------------|-------|
+| `AWESOME_AWS_DEFAULT_REGION` | `eu-central-1` (or your preferred AWS region) |
 | `AWESOME_AWS_DEPLOY_ROLE_DEV` | `arn:aws:iam::<DEV_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 | `AWESOME_AWS_DEPLOY_ROLE_TEST` | `arn:aws:iam::<TEST_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 | `AWESOME_AWS_DEPLOY_ROLE_PROD` | `arn:aws:iam::<PROD_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
+
+> **Important:** `AWESOME_AWS_DEFAULT_REGION` must be set before running any workflows. All workflows use this variable to determine which AWS region to deploy to.
 
 ### 3.2 Verify Root Account Secret
 
@@ -177,7 +180,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ matrix.role }}
-          aws-region: eu-central-1
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       - name: Test access
         run: |
