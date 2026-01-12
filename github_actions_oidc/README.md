@@ -84,7 +84,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/awesome-gha-allow-all-role
-          aws-region: eu-central-1
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       # AWS CLI commands now use temporary credentials
       - name: Test AWS access

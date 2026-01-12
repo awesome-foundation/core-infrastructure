@@ -67,7 +67,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ matrix.aws_role_to_assume }}
-          aws-region: eu-central-1
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       - name: Test AWS access credentials for dev account
         if: ${{ matrix.should_run }}

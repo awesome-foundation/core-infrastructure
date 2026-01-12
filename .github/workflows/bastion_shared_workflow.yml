@@ -48,7 +48,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ inputs.AWS_ROLE_TO_ASSUME }}
-          aws-region: eu-central-1
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       - name: Test AWS access credentials for  ${{ inputs.AWS_ACCOUNT_STAGE }} account
         run: aws sts get-caller-identity
