@@ -57,6 +57,7 @@ Resources:
         - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
         - 'arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess'
         - 'arn:aws:iam::aws:policy/AWSCloudTrail_ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AWSManagementConsoleBasicUserAccess'
       InlinePolicy:
         Version: '2012-10-17'
         Statement:
