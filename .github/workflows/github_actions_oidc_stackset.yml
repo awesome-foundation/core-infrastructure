@@ -1,0 +1,139 @@
+# Copyright 2025 Luka Kladarić, Chaos Guru
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: GitHub Actions OIDC StackSet deploy
+
+env:
+  TEMPLATE_PATH: github_actions_oidc/github_actions.yml
+  STACKSET_NAME: github-actions-oidc
+  AWS_REGION: eu-central-1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - labeled
+      - unlabeled
+    paths:
+      - '.github/workflows/github_actions_oidc_stackset.yml'
+      - 'github_actions_oidc/github_actions.yml'
+      - '!**/*.md'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/github_actions_oidc_stackset.yml'
+      - 'github_actions_oidc/github_actions.yml'
+      - '!**/*.md'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-stackset:
+    name: Deploy OIDC StackSet to Member Accounts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy-pr'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials (root account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_ROOT }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Test AWS access
+        run: aws sts get-caller-identity
+
+      - name: Get Organization Root ID
+        id: org
+        run: |
+          ROOT_ID=$(aws organizations list-roots --query 'Roots[0].Id' --output text)
+          echo "root_id=$ROOT_ID" >> $GITHUB_OUTPUT
+
+      - name: Create or Update StackSet
+        run: |
+          # Try to create the StackSet first
+          if aws cloudformation create-stack-set \
+            --stack-set-name $STACKSET_NAME \
+            --template-body file://$TEMPLATE_PATH \
+            --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
+            --permission-model SERVICE_MANAGED \
+            --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
+            --capabilities CAPABILITY_NAMED_IAM \
+            2>/dev/null; then
+            echo "StackSet created successfully"
+          else
+            # StackSet already exists, update it
+            echo "StackSet exists, updating..."
+            aws cloudformation update-stack-set \
+              --stack-set-name $STACKSET_NAME \
+              --template-body file://$TEMPLATE_PATH \
+              --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
+              --permission-model SERVICE_MANAGED \
+              --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
+              --capabilities CAPABILITY_NAMED_IAM \
+              || echo "No updates needed or update in progress"
+          fi
+
+      - name: Deploy Stack Instances to Organization
+        run: |
+          # Create stack instances for all accounts in the organization
+          # This will skip the management account and deploy to all member accounts
+          aws cloudformation create-stack-instances \
+            --stack-set-name $STACKSET_NAME \
+            --deployment-targets OrganizationalUnitIds=${{ steps.org.outputs.root_id }} \
+            --regions ${{ env.AWS_REGION }} \
+            --operation-preferences FailureTolerancePercentage=100,MaxConcurrentPercentage=100 \
+            2>/dev/null || echo "Stack instances already exist or operation in progress"
+
+      - name: Wait for StackSet Operation
+        run: |
+          echo "Checking StackSet operation status..."
+          # Give it a moment to start
+          sleep 5
+          # Check the latest operation
+          OPERATION_ID=$(aws cloudformation list-stack-set-operations \
+            --stack-set-name $STACKSET_NAME \
+            --query 'Summaries[0].OperationId' \
+            --output text 2>/dev/null || echo "")
+
+          if [ -n "$OPERATION_ID" ] && [ "$OPERATION_ID" != "None" ]; then
+            echo "Waiting for operation $OPERATION_ID to complete..."
+            aws cloudformation describe-stack-set-operation \
+              --stack-set-name $STACKSET_NAME \
+              --operation-id $OPERATION_ID \
+              --query 'StackSetOperation.Status' \
+              --output text
+          fi
+
+      - name: Show StackSet Status
+        run: |
+          echo "=== StackSet Status ==="
+          aws cloudformation describe-stack-set \
+            --stack-set-name $STACKSET_NAME \
+            --query 'StackSet.{Name:StackSetName,Status:Status}' \
+            --output table 2>/dev/null || echo "Could not get StackSet status"
+
+          echo ""
+          echo "=== Stack Instances ==="
+          aws cloudformation list-stack-instances \
+            --stack-set-name $STACKSET_NAME \
+            --query 'Summaries[].{Account:Account,Region:Region,Status:Status}' \
+            --output table 2>/dev/null || echo "No stack instances yet"

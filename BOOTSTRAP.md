@@ -76,9 +76,9 @@ This must be done manually first to bootstrap CI/CD.
 
 1. Log into the **root account** via AWS Console
 2. Go to **CloudFormation** → **Create stack**
-3. Upload `github_actions_oidc/github_actions_root.yml`
+3. Upload `github_actions_oidc/github_actions.yml`
 4. Parameters:
-   - **TrustedGithubOrgOrRepo**: `your-github-org/core-infrastructure` (or `your-github-org/*` for all repos)
+   - **TrustedGithubOrgOrRepo**: `your-github-org/core-infrastructure` (grant access only to this repository)
 5. Stack name: `github-actions-oidc`
 6. Create the stack
 
@@ -87,82 +87,33 @@ After creation, note the role ARN:
 arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role
 ```
 
-### 2.2 Deploy OIDC to Member Accounts via StackSet
+### 2.2 Configure Root Account Secret
 
-Deploy the same OIDC integration to all member accounts using a StackSet.
+Before the StackSet workflow can run, you need to configure the root account role as a GitHub secret.
 
-**Option A: Manual via Console**
+Go to **GitHub** → **Organization Settings** → **Secrets and variables** → **Actions** → **Secrets**
 
-1. In the **root account**, go to **CloudFormation** → **StackSets**
-2. Click **Create StackSet**
-3. Choose **Service-managed permissions**
-4. Upload `github_actions_oidc/github_actions.yml`
-5. StackSet name: `github-actions-oidc`
-6. Parameters:
-   - **TrustedGithubOrgOrRepo**: `your-github-org/*` (recommended for member accounts)
-7. Deployment targets: **Deploy to organization**
-8. Specify regions: `eu-central-1` (or your preferred region)
-9. Create StackSet
+Add this **organization secret**:
 
-**Option B: Automated via GitHub Actions**
+| Secret Name | Value |
+|-------------|-------|
+| `AWESOME_AWS_DEPLOY_ROLE_ROOT` | `arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 
-Once the root account OIDC is set up, you can automate StackSet deployments. Add this workflow:
+### 2.3 Deploy OIDC to Member Accounts via StackSet
 
-```yaml
-# .github/workflows/stackset_gha_oidc.yml
-name: Deploy GitHub Actions OIDC StackSet
+The StackSet deployment is automated via the `github_actions_oidc_stackset.yml` workflow.
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'github_actions_oidc/github_actions.yml'
-      - '.github/workflows/stackset_gha_oidc.yml'
+**Trigger deployment:**
+- Push any change to `github_actions_oidc/github_actions.yml` or the workflow file
+- Or manually trigger the workflow via GitHub Actions
 
-permissions:
-  id-token: write
-  contents: read
+The workflow will:
+1. Create/update a CloudFormation StackSet named `github-actions-oidc`
+2. Deploy to all member accounts in the organization
+3. Set `TrustedGithubOrgOrRepo` to `your-github-org/*` (all org repos)
+4. Enable auto-deployment for any new accounts added to the organization
 
-jobs:
-  deploy-stackset:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Configure AWS credentials (root account)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_ROOT }}
-          aws-region: eu-central-1
-
-      - name: Deploy StackSet
-        run: |
-          aws cloudformation create-stack-set \
-            --stack-set-name github-actions-oidc \
-            --template-body file://github_actions_oidc/github_actions.yml \
-            --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
-            --permission-model SERVICE_MANAGED \
-            --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
-            --capabilities CAPABILITY_NAMED_IAM \
-            2>/dev/null || \
-          aws cloudformation update-stack-set \
-            --stack-set-name github-actions-oidc \
-            --template-body file://github_actions_oidc/github_actions.yml \
-            --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
-            --permission-model SERVICE_MANAGED \
-            --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
-            --capabilities CAPABILITY_NAMED_IAM
-
-          # Deploy to all accounts in the organization
-          aws cloudformation create-stack-instances \
-            --stack-set-name github-actions-oidc \
-            --deployment-targets OrganizationalUnitIds=$(aws organizations list-roots --query 'Roots[0].Id' --output text) \
-            --regions eu-central-1 \
-            2>/dev/null || true
-```
-
-### 2.3 Verify OIDC Roles
+### 2.4 Verify OIDC Roles
 
 After StackSet deployment completes, verify the roles exist in each member account:
 
@@ -191,13 +142,9 @@ Add these **organization variables**:
 | `AWESOME_AWS_DEPLOY_ROLE_TEST` | `arn:aws:iam::<TEST_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 | `AWESOME_AWS_DEPLOY_ROLE_PROD` | `arn:aws:iam::<PROD_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 
-### 3.2 Add Organization Secrets
+### 3.2 Verify Root Account Secret
 
-Add this **organization secret** for root account access (used by SSO and StackSet workflows):
-
-| Secret Name | Value |
-|-------------|-------|
-| `AWESOME_AWS_DEPLOY_ROLE_ROOT` | `arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
+The root account secret (`AWESOME_AWS_DEPLOY_ROLE_ROOT`) should already be configured from Phase 2.2. This secret is used by SSO and StackSet workflows.
 
 ### 3.3 Verify GitHub Actions Access
 

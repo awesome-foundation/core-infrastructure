@@ -48,7 +48,7 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${TrustedGithubOrgOrRepo}:*' # Allow all repositories in the specified org or repo
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${TrustedGithubOrgOrRepo}:*'
       Policies:
         - PolicyName: 'awesome-gha-allow-all-policy'
           PolicyDocument:

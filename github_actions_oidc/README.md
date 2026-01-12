@@ -6,22 +6,22 @@ The GitHub Actions OIDC (OpenID Connect) project configures secure, password-les
 
 ## What This Creates
 
-This CloudFormation project deploys:
+This CloudFormation template (`github_actions.yml`) deploys:
 
 * **OIDC Identity Provider**
   * Configures AWS to trust the GitHub Actions OIDC provider
   * Uses GitHub's token issuer URL and thumbprints for validation
   * Enables federated authentication from GitHub workflows
 
-* **IAM Roles**
-  * Creates roles that GitHub Actions can assume through OIDC
-  * Defines specific trust conditions based on GitHub repository identity
-  * Grants appropriate permissions to deployed resources
+* **IAM Role**
+  * Creates a role that GitHub Actions can assume through OIDC
+  * Defines trust conditions based on GitHub repository identity
+  * Grants administrative permissions to deployed resources
 
 * **Security Controls**
   * Limits session duration to 1 hour to reduce risk exposure
-  * Uses conditional policy statements to restrict access by repository
-  * Different permission models for the root account vs. other accounts
+  * Uses conditional policy statements to restrict access by repository/organization
+  * Configurable scope: single repository or entire organization
 
 ## How It Works
 
@@ -42,28 +42,30 @@ The OIDC integration follows this process:
    * The workflow presents this token to AWS STS to assume the IAM role
    * AWS validates the token and grants temporary credentials if conditions match
 
-4. **Deployment Patterns**
-   * Root account has a more restrictive setup (only specific repositories allowed)
-   * Member accounts are more permissive (all organization repositories allowed)
-   * StackSet deployment ensures consistent configuration across accounts
+## Deployment Model
 
-## Implementation Details
+The template is deployed using a two-phase approach:
 
-The project includes two primary CloudFormation templates:
+### Phase 1: Root Account (Manual)
 
-### 1. Root Account Template (`github_actions_root.yml`)
+The root account deployment must be done manually to bootstrap CI/CD:
 
-This has to be manually deployed via Cloudformation to establish the initial trust between Github Actions and AWS.
+1. Deploy via CloudFormation Console
+2. Parameter `TrustedGithubOrgOrRepo`: `your-org/core-infrastructure` (specific repo only)
+3. This creates the initial trust that allows the core-infrastructure repo to deploy further infrastructure
 
-It takes a parameter of what to grant access to, can be either a whole github org, or a single repository.
+### Phase 2: Member Accounts (Automated via StackSet)
 
-Suggested deployment only allows the current repository, not the entire github org.
+Once the root account has OIDC configured, the `github_actions_oidc_stackset.yml` workflow automatically:
 
-### 2. Member Account Template (`github_actions.yml`)
+1. Creates/updates a CloudFormation StackSet
+2. Deploys to all member accounts in the organization
+3. Parameter `TrustedGithubOrgOrRepo`: `your-org/*` (all org repos)
+4. Auto-deployment enabled for new accounts
 
-This can be deployed automatically based on the trust established with the root one.
-
-It extends access to the relevant subaccounts, and can be extended to the entire github org.
+This approach ensures:
+* **Root account**: Restricted to only the core-infrastructure repository
+* **Member accounts**: Accessible by all repositories in the GitHub organization
 
 ## Integration with GitHub Workflows
 
@@ -79,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/awesome-gha-allow-all-role
           aws-region: eu-central-1
@@ -99,27 +101,10 @@ This OIDC-based approach offers several advantages:
 * **Auditability**: Actions performed through assumed roles are clearly attributed in AWS CloudTrail
 * **Reduced Credential Management**: No need for credential rotation or management
 
-## Deployment Model
+## Components
 
-The templates are deployed using different approaches to ensure appropriate access controls:
-
-1. **Root Account**:
-   * Manual deployment to ensure tight control
-   * More restrictive trust conditions
-   * Only allows the core-infrastructure repository
-
-2. **Member Accounts**:
-   * Deployed via CloudFormation StackSet
-   * Automatically applied to new accounts
-   * More permissive conditions for broader developer access
-
-## Related Projects
-
-This OIDC setup is a foundational security component that enables:
-
-* **CI/CD Pipelines**: All deployment workflows throughout the infrastructure
-* **AWS SSO**: Works in conjunction with IAM Identity Center for human access
-* **Infrastructure Automation**: Powers all infrastructure-as-code deployments
+* **github_actions.yml**: CloudFormation template for OIDC provider and IAM role
+* **github_actions_oidc_stackset.yml**: GitHub Actions workflow for StackSet deployment
 
 ## References
 
