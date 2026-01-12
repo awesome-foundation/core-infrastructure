@@ -14,11 +14,12 @@ This guide walks through the complete setup of Awesome Foundation infrastructure
 The setup follows this order:
 
 1. **AWS Organization Setup** - Root account + stage-based member accounts
-2. **GitHub Actions OIDC** - Deploy to root, then StackSet to member accounts
-3. **GitHub Variables** - Configure role ARNs for CI/CD
-4. **Core Infrastructure** - VPC and Web stacks
-5. **Optional: Bastion** - For database/private subnet access
-6. **Optional: SSO** - For human access via AWS IAM Identity Center
+2. **Optional: SSO** - For human access via AWS IAM Identity Center
+3. **GitHub Actions OIDC** - Deploy to root, then StackSet to member accounts
+4. **GitHub Variables** - Configure role ARNs for CI/CD
+5. **Core Infrastructure** - VPC and Web stacks
+6. **Deploy an Example Application** - Sample ECS service
+7. **Optional: Bastion** - For database/private subnet access
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -68,9 +69,124 @@ In the root account:
 
 ---
 
-## Phase 2: GitHub Actions OIDC Integration
+## Phase 2: Deploy SSO (Optional)
 
-### 2.1 Deploy OIDC to Root Account (Manual)
+Set up AWS IAM Identity Center for human access to AWS accounts. This is recommended early in the bootstrap process so you can use SSO credentials for subsequent manual steps instead of root account credentials.
+
+### 2.1 Enable IAM Identity Center
+
+1. Log into the **root account**
+2. Go to **IAM Identity Center** (formerly AWS SSO)
+3. Click **Enable**
+4. Note the **Identity Store ID** (e.g., `d-1234567890`)
+5. Note the **Instance ARN** (e.g., `arn:aws:sso:::instance/ssoins-1234567890`)
+
+### 2.2 Enable IAM Billing Access
+
+By default, AWS does not allow IAM users or roles (including SSO roles) to access billing information. To enable billing access:
+
+1. While still logged into the **root account** as the root user
+2. Click your account name in the top-right corner of the console
+3. Select **Account**
+4. Scroll down to **IAM user and role access to Billing information**
+5. Click **Edit** and enable the setting
+6. Click **Update**
+
+### 2.3 Update SSO Configuration
+
+Edit `aws_sso/aws_sso_access.yml` and update the mappings:
+
+```yaml
+Mappings:
+  ConfigMap:
+    OrgAccount:
+      AccountIdProd: '<YOUR_PROD_ACCOUNT_ID>'
+      AccountIdDev: '<YOUR_DEV_ACCOUNT_ID>'
+      AccountIdTest: '<YOUR_TEST_ACCOUNT_ID>'
+  SSOMap:
+    Instance:
+      IdentityStore: '<YOUR_IDENTITY_STORE_ID>'
+      IAMDirectory: '<YOUR_SSO_INSTANCE_ARN>'
+```
+
+### 2.4 Deploy SSO Stack (Manual)
+
+Since GitHub Actions OIDC is not yet configured, deploy the SSO stack manually:
+
+1. Log into the **root account** via AWS Console
+2. Go to **CloudFormation** → **Create stack**
+3. Upload `aws_sso/aws_sso_access.yml`
+4. Stack name: `awesome-sso`
+5. Create the stack
+
+**What gets created:**
+- SSO Groups (Developers, Ops)
+- Permission Sets (DeveloperAccess, AdministratorAccess)
+- Account assignments linking groups to accounts
+
+### 2.5 Add Users
+
+You can add users manually in IAM Identity Center, or use the sync script after GitHub Actions is configured.
+
+To add users manually:
+1. Go to **IAM Identity Center** → **Users**
+2. Click **Add user**
+3. Enter user details and assign to groups (Developers, Ops)
+
+To use the automated sync (after Phase 4):
+Edit `aws_sso/aws_sso_users.yml` to define users:
+
+```yaml
+users:
+  - username: jane.doe
+    email: jane.doe@yourcompany.com
+    first_name: Jane
+    last_name: Doe
+    groups:
+      - Developers
+      - Ops
+
+  - username: john.smith
+    email: john.smith@yourcompany.com
+    first_name: John
+    last_name: Smith
+    groups:
+      - Developers
+```
+
+Push changes to trigger the user sync workflow.
+
+### 2.6 Configure AWS CLI for SSO
+
+Users can configure their local AWS CLI:
+
+```ini
+# ~/.aws/config
+[profile dev-developer]
+sso_start_url = https://your-sso-portal.awsapps.com/start
+sso_region = eu-central-1
+sso_account_id = <DEV_ACCOUNT_ID>
+sso_role_name = DeveloperAccess
+region = eu-central-1
+
+[profile prod-admin]
+sso_start_url = https://your-sso-portal.awsapps.com/start
+sso_region = eu-central-1
+sso_account_id = <PROD_ACCOUNT_ID>
+sso_role_name = AdministratorAccess
+region = eu-central-1
+```
+
+Login with:
+```bash
+aws sso login --profile dev-developer
+```
+
+---
+
+## Phase 3: GitHub Actions OIDC Integration
+
+### 3.1 Deploy OIDC to Root Account (Manual)
 
 This must be done manually first to bootstrap CI/CD.
 
@@ -87,7 +203,7 @@ After creation, note the role ARN:
 arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role
 ```
 
-### 2.2 Deploy OIDC to Member Accounts via StackSet
+### 3.2 Deploy OIDC to Member Accounts via StackSet
 
 Deploy the same OIDC integration to all member accounts using a StackSet.
 
@@ -162,7 +278,7 @@ jobs:
             2>/dev/null || true
 ```
 
-### 2.3 Verify OIDC Roles
+### 3.3 Verify OIDC Roles
 
 After StackSet deployment completes, verify the roles exist in each member account:
 
@@ -175,11 +291,11 @@ arn:aws:iam::<PROD_ACCOUNT_ID>:role/awesome-gha-allow-all-role
 
 ---
 
-## Phase 3: Configure GitHub Variables
+## Phase 4: Configure GitHub Variables
 
 Configure GitHub organization variables so workflows can authenticate to each account.
 
-### 3.1 Add Organization Variables
+### 4.1 Add Organization Variables
 
 Go to **GitHub** → **Organization Settings** → **Secrets and variables** → **Actions** → **Variables**
 
@@ -191,7 +307,7 @@ Add these **organization variables**:
 | `AWESOME_AWS_DEPLOY_ROLE_TEST` | `arn:aws:iam::<TEST_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 | `AWESOME_AWS_DEPLOY_ROLE_PROD` | `arn:aws:iam::<PROD_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 
-### 3.2 Add Organization Secrets
+### 4.2 Add Organization Secrets
 
 Add this **organization secret** for root account access (used by SSO and StackSet workflows):
 
@@ -199,7 +315,7 @@ Add this **organization secret** for root account access (used by SSO and StackS
 |-------------|-------|
 | `AWESOME_AWS_DEPLOY_ROLE_ROOT` | `arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role` |
 
-### 3.3 Verify GitHub Actions Access
+### 4.3 Verify GitHub Actions Access
 
 Create a test workflow or manually trigger a workflow to verify access works:
 
@@ -240,11 +356,11 @@ jobs:
 
 ---
 
-## Phase 4: Deploy Core Infrastructure
+## Phase 5: Deploy Core Infrastructure
 
 With CI/CD working, deploy the foundational stacks.
 
-### 4.1 Update Domain Configuration
+### 5.1 Update Domain Configuration
 
 > **Important:** We recommend using a dedicated infrastructure domain (e.g., `companyname.dev`) rather than your production domain (`companyname.com`). See [Why We Use a Dedicated Infrastructure Domain](./README.md#why-we-use-a-dedicated-infrastructure-domain) for the rationale.
 
@@ -254,7 +370,7 @@ Before deploying, update the domain in the VPC template:
 
 Search for `example.dev` and replace with your domain.
 
-### 4.2 Deploy VPC Stack
+### 5.2 Deploy VPC Stack
 
 The VPC stack must be deployed first as other stacks depend on it.
 
@@ -271,7 +387,7 @@ The workflow deploys to all three environments (dev, test, prod) in parallel.
 - Route53 hosted zone (`dev.yourdomain.com`, `test.yourdomain.com`, `prod.yourdomain.com`)
 - DynamoDB VPC endpoint
 
-### 4.3 Deploy Web Stack
+### 5.3 Deploy Web Stack
 
 After VPC is deployed, deploy the web infrastructure.
 
@@ -286,7 +402,7 @@ After VPC is deployed, deploy the web infrastructure.
 - ALB listener rules priority management Lambda
 - S3 bucket for ALB access logs
 
-### 4.4 Deploy HAProxy Sidecar Image
+### 5.4 Deploy HAProxy Sidecar Image
 
 Build and push the HAProxy sidecar image to ECR:
 
@@ -297,7 +413,7 @@ This creates ECR repositories and pushes the HAProxy image to all environments.
 
 ---
 
-## Phase 5: Deploy an Example Application
+## Phase 6: Deploy an Example Application
 
 At this point, you can deploy applications to ECS. An application deployment typically needs:
 
@@ -347,11 +463,11 @@ Resources:
 
 ---
 
-## Phase 6: Deploy Bastion (Optional)
+## Phase 7: Deploy Bastion (Optional)
 
 Deploy the bastion host for SSH access to resources in private subnets (databases, internal services).
 
-### 6.1 Configure Authorized Users
+### 7.1 Configure Authorized Users
 
 Edit `awesome-bastion/authorized_users` with GitHub usernames who should have access:
 
@@ -362,7 +478,7 @@ github_username_2
 
 SSH public keys are fetched from GitHub at container startup.
 
-### 6.2 Deploy Bastion Stack
+### 7.2 Deploy Bastion Stack
 
 **Trigger deployment:**
 - Push changes to `awesome-bastion/` on the `master` branch
@@ -372,7 +488,7 @@ SSH public keys are fetched from GitHub at container startup.
 - Network Load Balancer on port 22
 - DNS record: `bastion.stage.yourdomain.com`
 
-### 6.3 Connect via Bastion
+### 7.3 Connect via Bastion
 
 ```bash
 # Direct connection
@@ -384,108 +500,6 @@ ssh -L 5432:my-database.cluster-xxx.eu-central-1.rds.amazonaws.com:5432 \
 
 # Then connect locally
 psql -h localhost -p 5432 -U myuser mydatabase
-```
-
----
-
-## Phase 7: Deploy SSO (Optional)
-
-Set up AWS IAM Identity Center for human access to AWS accounts.
-
-### 7.1 Enable IAM Identity Center
-
-1. Log into the **root account**
-2. Go to **IAM Identity Center** (formerly AWS SSO)
-3. Click **Enable**
-4. Note the **Identity Store ID** (e.g., `d-1234567890`)
-5. Note the **Instance ARN** (e.g., `arn:aws:sso:::instance/ssoins-1234567890`)
-
-### 7.1a Enable IAM Billing Access
-
-By default, AWS does not allow IAM users or roles (including SSO roles) to access billing information. To enable billing access:
-
-1. While still logged into the **root account** as the root user
-2. Click your account name in the top-right corner of the console
-3. Select **Account**
-4. Scroll down to **IAM user and role access to Billing information**
-5. Click **Edit** and enable the setting
-6. Click **Update**
-
-### 7.2 Update SSO Configuration
-
-Edit `aws_sso/aws_sso_access.yml` and update the mappings:
-
-```yaml
-Mappings:
-  ConfigMap:
-    OrgAccount:
-      AccountIdProd: '<YOUR_PROD_ACCOUNT_ID>'
-      AccountIdDev: '<YOUR_DEV_ACCOUNT_ID>'
-      AccountIdTest: '<YOUR_TEST_ACCOUNT_ID>'
-  SSOMap:
-    Instance:
-      IdentityStore: '<YOUR_IDENTITY_STORE_ID>'
-      IAMDirectory: '<YOUR_SSO_INSTANCE_ARN>'
-```
-
-### 7.3 Deploy SSO Stack
-
-**Trigger deployment:**
-- Push changes to `aws_sso/aws_sso_access.yml` on the `master` branch
-
-**What gets created:**
-- SSO Groups (Developers, Ops)
-- Permission Sets (DeveloperAccess, AdministratorAccess)
-- Account assignments linking groups to accounts
-
-### 7.4 Add Users
-
-Edit `aws_sso/aws_sso_users.yml` to define users:
-
-```yaml
-users:
-  - username: jane.doe
-    email: jane.doe@yourcompany.com
-    first_name: Jane
-    last_name: Doe
-    groups:
-      - Developers
-      - Ops
-
-  - username: john.smith
-    email: john.smith@yourcompany.com
-    first_name: John
-    last_name: Smith
-    groups:
-      - Developers
-```
-
-Push changes to trigger the user sync workflow.
-
-### 7.5 Configure AWS CLI for SSO
-
-Users can configure their local AWS CLI:
-
-```ini
-# ~/.aws/config
-[profile dev-developer]
-sso_start_url = https://your-sso-portal.awsapps.com/start
-sso_region = eu-central-1
-sso_account_id = <DEV_ACCOUNT_ID>
-sso_role_name = DeveloperAccess
-region = eu-central-1
-
-[profile prod-admin]
-sso_start_url = https://your-sso-portal.awsapps.com/start
-sso_region = eu-central-1
-sso_account_id = <PROD_ACCOUNT_ID>
-sso_role_name = AdministratorAccess
-region = eu-central-1
-```
-
-Login with:
-```bash
-aws sso login --profile dev-developer
 ```
 
 ---
