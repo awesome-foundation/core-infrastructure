@@ -117,9 +117,6 @@ Resources:
       # SessionDuration: 'PT12H' # 12 hours - when doing initial deployment/testing
       ManagedPolicies:
         - 'arn:aws:iam::aws:policy/AdministratorAccess'
-        - 'arn:aws:iam::aws:policy/AWSManagementConsoleBasicUserAccess'
-        - 'arn:aws:iam::aws:policy/job-function/Billing'
-        - 'arn:aws:iam::aws:policy/job-function/SupportUser'
 
   ## ASSIGNMENTS
   ## Assignments link SSO Groups to AWS Accounts, with PermissionSet
