@@ -147,6 +147,19 @@ To add or remove users:
 * **Developers:** Read-only access to most services, with permissions for common development tasks like viewing logs, updating services, and deploying via CloudFormation
 * **Ops:** Full administrative access for infrastructure management
 
+## Enabling Billing Access for SSO Users
+
+By default, AWS does not allow IAM users or roles (including SSO roles) to access billing information, even with AdministratorAccess. To enable billing access for SSO users:
+
+1. Log into the **root account** using the root user credentials (not SSO)
+2. Click your account name in the top-right corner of the console
+3. Select **Account**
+4. Scroll down to **IAM user and role access to Billing information**
+5. Click **Edit** and enable the setting
+6. Click **Update**
+
+Once enabled, users with AdministratorAccess will be able to view billing dashboards and cost management features.
+
 ## Components
 
 * **aws_sso_access.yml:** CloudFormation template defining groups, permissions, and assignments

@@ -400,6 +400,17 @@ Set up AWS IAM Identity Center for human access to AWS accounts.
 4. Note the **Identity Store ID** (e.g., `d-1234567890`)
 5. Note the **Instance ARN** (e.g., `arn:aws:sso:::instance/ssoins-1234567890`)
 
+### 7.1a Enable IAM Billing Access
+
+By default, AWS does not allow IAM users or roles (including SSO roles) to access billing information. To enable billing access:
+
+1. While still logged into the **root account** as the root user
+2. Click your account name in the top-right corner of the console
+3. Select **Account**
+4. Scroll down to **IAM user and role access to Billing information**
+5. Click **Edit** and enable the setting
+6. Click **Update**
+
 ### 7.2 Update SSO Configuration
 
 Edit `aws_sso/aws_sso_access.yml` and update the mappings:
