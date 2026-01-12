@@ -57,6 +57,7 @@ Resources:
         - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
         - 'arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess'
         - 'arn:aws:iam::aws:policy/AWSCloudTrail_ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AWSManagementConsoleBasicUserAccess'
       InlinePolicy:
         Version: '2012-10-17'
         Statement:
@@ -116,6 +117,9 @@ Resources:
       # SessionDuration: 'PT12H' # 12 hours - when doing initial deployment/testing
       ManagedPolicies:
         - 'arn:aws:iam::aws:policy/AdministratorAccess'
+        - 'arn:aws:iam::aws:policy/AWSManagementConsoleBasicUserAccess'
+        - 'arn:aws:iam::aws:policy/job-function/Billing'
+        - 'arn:aws:iam::aws:policy/job-function/SupportUser'
 
   ## ASSIGNMENTS
   ## Assignments link SSO Groups to AWS Accounts, with PermissionSet
