@@ -13,7 +13,7 @@
 # limitations under the License.
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Awesome Foundation VPC v0.2
+Description: Awesome Foundation VPC v0.3
 
 Parameters:
   Stage:
@@ -27,6 +27,34 @@ Parameters:
     Type: String
     Description: This domain name is used for internal networking and not meant to be exposed to the public.
     Default: example.dev # We hardcode this in the template, but changing it has no effect and even if it did it would break everything.
+  # TODO: Investigate yes/no boolean vs string collision in rain/CloudFormation.
+  #       Using 0/1 as workaround until resolved.
+  DeployAZOne:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone One (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 1
+  DeployAZTwo:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone Two (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 1
+  DeployAZThree:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone Three (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 0
+
+Conditions:
+  DeployAZOne: !Equals [!Ref DeployAZOne, 1]
+  DeployAZTwo: !Equals [!Ref DeployAZTwo, 1]
+  DeployAZThree: !Equals [!Ref DeployAZThree, 1]
 
 Mappings:
   # used https://www.calculator.net/ip-subnet-calculator.html to navigate
@@ -46,7 +74,16 @@ Mappings:
       SubnetPrivateThree: '192.0/18' # 16k hosts, 192 - 255
 
 Resources:
-  ## BEGIN networking
+  #############################################################################
+  # VPC
+  #############################################################################
+  # The Virtual Private Cloud is the foundational network container for all
+  # resources in this stack. It provides an isolated network environment with
+  # its own IP address range (CIDR block). Each stage (dev/test/prod) gets a
+  # different /16 network (65k addresses) to ensure complete isolation.
+  #
+  # DNS support is enabled so resources can resolve each other by hostname,
+  # and DNS hostnames are enabled so EC2 instances get public DNS names.
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -60,8 +97,22 @@ Resources:
         - Key: Name
           Value: awesome-vpc
 
+  #############################################################################
+  # PUBLIC SUBNETS
+  #############################################################################
+  # Public subnets are for resources that need direct internet access, such as
+  # load balancers, bastion hosts, or NAT gateways. Resources launched here
+  # automatically receive public IP addresses (MapPublicIpOnLaunch: true) and
+  # can be reached from the internet if security groups allow it.
+  #
+  # Each public subnet is placed in a different Availability Zone for high
+  # availability. They share a single route table that directs internet-bound
+  # traffic (0.0.0.0/0) through the Internet Gateway.
+  #
+  # CIDR allocation: /20 blocks (~4,000 addresses each)
   SubnetPublicOne:
     Type: AWS::EC2::Subnet
+    Condition: DeployAZOne
     Properties:
       AvailabilityZone:
         Fn::Select:
@@ -84,6 +135,7 @@ Resources:
 
   SubnetPublicTwo:
     Type: AWS::EC2::Subnet
+    Condition: DeployAZTwo
     Properties:
       AvailabilityZone:
         Fn::Select:
@@ -104,30 +156,46 @@ Resources:
           - id: W33
             reason: "This is a public subnet and we want to allow public IP addresses."
 
-  # SubnetPublicThree:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     AvailabilityZone:
-  #       Fn::Select:
-  #         - 2
-  #         - Fn::GetAZs: {Ref: 'AWS::Region'}
-  #     VpcId: !Ref 'VPC'
-  #     CidrBlock: !Join
-  #       - '.'
-  #       - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
-  #         - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPublicThree']
-  #     MapPublicIpOnLaunch: true
-      # Tags:
-      #   - Key: Name
-      #     Value: awesome-PublicThree
-  #   Metadata:
-  #     cfn_nag:
-  #       rules_to_suppress:
-  #         - id: W33
-  #           reason: "This is a public subnet and we want to allow public IP addresses."
+  SubnetPublicThree:  # Optional third AZ for production workloads requiring higher availability
+    Type: AWS::EC2::Subnet
+    Condition: DeployAZThree
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPublicThree']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: awesome-PublicThree
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "This is a public subnet and we want to allow public IP addresses."
 
+  #############################################################################
+  # PRIVATE SUBNETS
+  #############################################################################
+  # Private subnets are for resources that should NOT be directly accessible
+  # from the internet, such as application servers, databases, and internal
+  # services. Resources here only have private IP addresses and reach the
+  # internet through NAT gateways (for outbound connections only).
+  #
+  # Each private subnet has its own route table pointing to its own NAT gateway,
+  # ensuring traffic stays within the same AZ for lower latency and avoiding
+  # cross-AZ data transfer charges.
+  #
+  # CIDR allocation: /18 blocks (~16,000 addresses each) - larger than public
+  # subnets because most workloads run here.
   SubnetPrivateOne:
     Type: AWS::EC2::Subnet
+    Condition: DeployAZOne
     Properties:
       AvailabilityZone:
         Fn::Select:
@@ -144,6 +212,7 @@ Resources:
 
   SubnetPrivateTwo:
     Type: AWS::EC2::Subnet
+    Condition: DeployAZTwo
     Properties:
       AvailabilityZone:
         Fn::Select:
@@ -158,25 +227,33 @@ Resources:
         - Key: Name
           Value: awesome-PrivateTwo
 
-  # SubnetPrivateThree:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     AvailabilityZone:
-  #       Fn::Select:
-  #         - 2
-  #         - Fn::GetAZs: {Ref: 'AWS::Region'}
-  #     VpcId: !Ref 'VPC'
-  #     CidrBlock: !Join
-  #       - '.'
-  #       - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
-  #         - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPrivateThree']
-      # Tags:
-      #   - Key: Name
-      #     Value: awesome-PrivateThree
+  SubnetPrivateThree:
+    Type: AWS::EC2::Subnet
+    Condition: DeployAZThree
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Join
+        - '.'
+        - - !FindInMap ['NetworkConfig', 'StagePrefix', !Ref 'Stage']
+          - !FindInMap ['NetworkConfig', 'NetworkSuffix', 'SubnetPrivateThree']
+      Tags:
+        - Key: Name
+          Value: awesome-PrivateThree
 
-  # Setup networking resources for the public subnets. Resources
-  # in the public subnets have public IP addresses and the routing table
-  # sends network traffic via the internet gateway.
+  #############################################################################
+  # INTERNET GATEWAY
+  #############################################################################
+  # The Internet Gateway provides bidirectional connectivity between the VPC
+  # and the public internet. It serves two purposes:
+  # 1. Allows resources with public IPs to receive inbound traffic from internet
+  # 2. Provides a target for route tables to send outbound internet traffic
+  #
+  # There's only one IGW per VPC, and it must be attached to the VPC before
+  # any routes can reference it.
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -190,6 +267,12 @@ Resources:
       VpcId: !Ref 'VPC'
       InternetGatewayId: !Ref 'InternetGateway'
 
+  #############################################################################
+  # PUBLIC ROUTING
+  #############################################################################
+  # All public subnets share a single route table. The key route sends all
+  # internet-bound traffic (0.0.0.0/0) to the Internet Gateway. Local VPC
+  # traffic is automatically routed within the VPC (implicit local route).
   RouteTablePublic:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -206,30 +289,50 @@ Resources:
       DestinationCidrBlock: '0.0.0.0/0'
       GatewayId: !Ref 'InternetGateway'
 
+  # Associate each public subnet with the shared public route table
   RouteTableAssociationSubnetPublicOne:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZOne
     Properties:
       SubnetId: !Ref SubnetPublicOne
       RouteTableId: !Ref RouteTablePublic
 
   RouteTableAssociationSubnetPublicTwo:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZTwo
     Properties:
       SubnetId: !Ref SubnetPublicTwo
       RouteTableId: !Ref RouteTablePublic
 
-  # RouteTableAssociationSubnetPublicThree:
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     SubnetId: !Ref SubnetPublicThree
-  #     RouteTableId: !Ref RouteTablePublic
+  RouteTableAssociationSubnetPublicThree:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZThree
+    Properties:
+      SubnetId: !Ref SubnetPublicThree
+      RouteTableId: !Ref RouteTablePublic
 
-  # Setup networking resources for the private subnets. Resources
-  # in these subnets have only private IP addresses, and must use a NAT
-  # gateway to talk to the internet. We launch three NAT gateways, one for
-  # each private subnet.
+  #############################################################################
+  # NAT GATEWAY INFRASTRUCTURE
+  #############################################################################
+  # NAT (Network Address Translation) gateways allow resources in private
+  # subnets to initiate outbound connections to the internet (e.g., downloading
+  # packages, calling external APIs) while preventing inbound connections.
+  #
+  # We deploy one NAT gateway per AZ for:
+  # - High availability: if one AZ fails, others continue working
+  # - Lower latency: traffic stays within the same AZ
+  # - Cost efficiency: avoids cross-AZ data transfer charges
+  #
+  # Each NAT gateway requires:
+  # 1. An Elastic IP (static public IP that persists across restarts)
+  # 2. Placement in a public subnet (so it can reach the internet)
+  # 3. A DNS record (for IP whitelisting with external services)
+
+  # Elastic IPs - Static public IPs assigned to NAT gateways. These IPs are
+  # useful for whitelisting with external services that require known source IPs.
   ElasticIPNatGatewayOne:
     Type: AWS::EC2::EIP
+    Condition: DeployAZOne
     DependsOn: GatewayAttachement
     Properties:
       Domain: vpc
@@ -237,18 +340,9 @@ Resources:
         - Key: Name
           Value: awesome-nat-one
 
-  ElasticIPNatGatewayOneDNSRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref DNSZone
-      Name: !Sub 'nat1.${Stage}.${BaseDomainName}'
-      Type: A
-      TTL: '60'
-      ResourceRecords:
-        - !GetAtt ElasticIPNatGatewayOne.PublicIp
-
   ElasticIPNatGatewayTwo:
     Type: AWS::EC2::EIP
+    Condition: DeployAZTwo
     DependsOn: GatewayAttachement
     Properties:
       Domain: vpc
@@ -256,37 +350,56 @@ Resources:
         - Key: Name
           Value: awesome-nat-two
 
+  ElasticIPNatGatewayThree:
+    Type: AWS::EC2::EIP
+    Condition: DeployAZThree
+    DependsOn: GatewayAttachement
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: awesome-nat-three
+
+  # DNS Records - Map NAT gateway IPs to friendly hostnames (nat1, nat2, nat3).
+  # Useful for looking up IPs when configuring external service whitelists.
+  ElasticIPNatGatewayOneDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: DeployAZOne
+    Properties:
+      HostedZoneId: !Ref DNSZone
+      Name: !Sub 'nat1.${Stage}.${BaseDomainName}'
+      Type: A
+      TTL: '500'
+      ResourceRecords:
+        - !GetAtt ElasticIPNatGatewayOne.PublicIp
+
   ElasticIPNatGatewayTwoDNSRecord:
     Type: AWS::Route53::RecordSet
+    Condition: DeployAZTwo
     Properties:
       HostedZoneId: !Ref DNSZone
       Name: !Sub 'nat2.${Stage}.${BaseDomainName}'
       Type: A
-      TTL: '60'
+      TTL: '500'
       ResourceRecords:
         - !GetAtt ElasticIPNatGatewayTwo.PublicIp
 
-  # ElasticIPNatGatewayThree:
-  #   Type: AWS::EC2::EIP
-  #   DependsOn: GatewayAttachement
-  #   Properties:
-  #       Domain: vpc
-      # Tags:
-      #   - Key: Name
-      #     Value: awesome-nat-three
+  ElasticIPNatGatewayThreeDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: DeployAZThree
+    Properties:
+      HostedZoneId: !Ref DNSZone
+      Name: !Sub 'nat3.${Stage}.${BaseDomainName}'
+      Type: A
+      TTL: '500'
+      ResourceRecords:
+        - !GetAtt ElasticIPNatGatewayThree.PublicIp
 
-  # ElasticIPNatGatewayThreeDNSRecord:
-  #   Type: AWS::Route53::RecordSet
-  #   Properties:
-  #     HostedZoneId: !Ref DNSZone
-  #     Name: !Sub 'nat3.${Stage}.${BaseDomainName}'
-  #     Type: A
-  #     TTL: '60'
-  #     ResourceRecords:
-  #       - !GetAtt ElasticIPNatGatewayThree.PublicIp
-
+  # NAT Gateways - The actual NAT devices. Each is placed in a public subnet
+  # so it can reach the internet, and is associated with an Elastic IP.
   NatGatewayOne:
     Type: AWS::EC2::NatGateway
+    Condition: DeployAZOne
     Properties:
       AllocationId: !GetAtt ElasticIPNatGatewayOne.AllocationId
       SubnetId: !Ref SubnetPublicOne
@@ -296,6 +409,7 @@ Resources:
 
   NatGatewayTwo:
     Type: AWS::EC2::NatGateway
+    Condition: DeployAZTwo
     Properties:
       AllocationId: !GetAtt ElasticIPNatGatewayTwo.AllocationId
       SubnetId: !Ref SubnetPublicTwo
@@ -303,80 +417,112 @@ Resources:
         - Key: Name
           Value: awesome-nat-two
 
-  # NatGatewayThree:
-  #   Type: AWS::EC2::NatGateway
-  #   Properties:
-  #     AllocationId: !GetAtt ElasticIPNatGatewayThree.AllocationId
-  #     SubnetId: !Ref SubnetPublicThree
-      # Tags:
-      #   - Key: Name
-      #     Value: awesome-nat-three
+  NatGatewayThree:
+    Type: AWS::EC2::NatGateway
+    Condition: DeployAZThree
+    Properties:
+      AllocationId: !GetAtt ElasticIPNatGatewayThree.AllocationId
+      SubnetId: !Ref SubnetPublicThree
+      Tags:
+        - Key: Name
+          Value: awesome-nat-three
 
+  #############################################################################
+  # PRIVATE ROUTING
+  #############################################################################
+  # Unlike public subnets that share one route table, each private subnet has
+  # its own route table pointing to its own AZ's NAT gateway. This ensures:
+  # - Traffic stays within the same AZ (lower latency, no cross-AZ charges)
+  # - If one NAT gateway fails, only that AZ is affected
+  #
+  # Each route table has a default route (0.0.0.0/0) pointing to its NAT gateway.
+
+  # Route Tables - One per private subnet, each pointing to its AZ's NAT gateway
   RouteTablePrivateOne:
     Type: AWS::EC2::RouteTable
+    Condition: DeployAZOne
     Properties:
       VpcId: !Ref 'VPC'
       Tags:
         - Key: Name
           Value: awesome-private-one
 
-  RoutePrivateOne:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTablePrivateOne
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGatewayOne
-
-  RouteTablePrivateOneAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref RouteTablePrivateOne
-      SubnetId: !Ref SubnetPrivateOne
-
   RouteTablePrivateTwo:
     Type: AWS::EC2::RouteTable
+    Condition: DeployAZTwo
     Properties:
       VpcId: !Ref 'VPC'
       Tags:
         - Key: Name
           Value: awesome-private-two
 
+  RouteTablePrivateThree:
+    Type: AWS::EC2::RouteTable
+    Condition: DeployAZThree
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-private-three
+
+  # Default Routes - Send all internet-bound traffic to the AZ's NAT gateway
+  RoutePrivateOne:
+    Type: AWS::EC2::Route
+    Condition: DeployAZOne
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateOne
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayOne
+
   RoutePrivateTwo:
     Type: AWS::EC2::Route
+    Condition: DeployAZTwo
     Properties:
       RouteTableId: !Ref RouteTablePrivateTwo
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGatewayTwo
 
+  RoutePrivateThree:
+    Type: AWS::EC2::Route
+    Condition: DeployAZThree
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateThree
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayThree
+
+  # Route Table Associations - Link each private subnet to its route table
+  RouteTablePrivateOneAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZOne
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateOne
+      SubnetId: !Ref SubnetPrivateOne
+
   RouteTablePrivateTwoAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZTwo
     Properties:
       RouteTableId: !Ref RouteTablePrivateTwo
       SubnetId: !Ref SubnetPrivateTwo
 
-  # RouteTablePrivateThree:
-  #   Type: AWS::EC2::RouteTable
-  #   Properties:
-  #     VpcId: !Ref 'VPC'
-      # Tags:
-      #   - Key: Name
-      #     Value: awesome-private-three
+  RouteTablePrivateThreeAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: DeployAZThree
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateThree
+      SubnetId: !Ref SubnetPrivateThree
 
-  # RoutePrivateThree:
-  #   Type: AWS::EC2::Route
-  #   Properties:
-  #     RouteTableId: !Ref RouteTablePrivateThree
-  #     DestinationCidrBlock: 0.0.0.0/0
-  #     NatGatewayId: !Ref NatGatewayThree
+  #############################################################################
+  # SECURITY GROUPS
+  #############################################################################
+  # Security groups act as virtual firewalls controlling inbound and outbound
+  # traffic at the instance level. Unlike NACLs (which operate at subnet level),
+  # security groups are stateful - return traffic is automatically allowed.
 
-  # RouteTablePrivateThreeAssociation:
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     RouteTableId: !Ref RouteTablePrivateThree
-  #     SubnetId: !Ref SubnetPrivateThree
-
-  # This is a security group that allows any resources in it to talk to each other.
-  # It also allows resources in public subnets to receive public traffic.
+  # VeryPermissive - A convenience security group for development that allows
+  # all inbound traffic from anywhere. Use sparingly and prefer more restrictive
+  # groups in production. Useful for load balancers, bastion hosts, or when
+  # you need to quickly test connectivity without firewall interference.
   SecurityGroupVeryPermissive:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -401,10 +547,18 @@ Resources:
           - id: W42
             reason: "This is an explicitly permissive Security Group, and is expected to have wide open ingress rules."
 
-  ## END networking
-
-  # This is a DNS zone where we map all resources into.
-  # We do this in the VPC stack because you have to delegate it in the parent domain before SSL certificates and other things work.
+  #############################################################################
+  # DNS
+  #############################################################################
+  # A Route53 private hosted zone for this stage (e.g., dev.example.dev).
+  # This zone is used for:
+  # - Internal service discovery (app.dev.example.dev)
+  # - NAT gateway IP lookups (nat1.dev.example.dev)
+  # - SSL certificate validation (via DNS challenges)
+  #
+  # IMPORTANT: The NS records from this zone must be delegated in the parent
+  # domain (example.dev) before SSL certificates or other DNS-dependent
+  # features will work. The DNSZoneServers output provides these NS records.
   DNSZone:
     Type: "AWS::Route53::HostedZone"
     Properties:
@@ -412,19 +566,37 @@ Resources:
       HostedZoneConfig:
         Comment: !Sub 'CloudFormation-Managed zone for ${Stage}.${BaseDomainName}'
 
-  # This is a legacy thing, but needed for some RDS instances
+  #############################################################################
+  # DATABASE INFRASTRUCTURE
+  #############################################################################
+  # DB Subnet Group - Required by RDS to know which subnets databases can be
+  # placed in. RDS requires at least two subnets in different AZs for high
+  # availability (Multi-AZ deployments). Only private subnets are included
+  # because databases should never be directly accessible from the internet.
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: Fargate network stack DB Subnet group
       SubnetIds:
-        - !Ref 'SubnetPrivateOne'
-        - !Ref 'SubnetPrivateTwo'
-        # - !Ref 'SubnetPrivateThree'
+        - !If [DeployAZOne, !Ref SubnetPrivateOne, !Ref "AWS::NoValue"]
+        - !If [DeployAZTwo, !Ref SubnetPrivateTwo, !Ref "AWS::NoValue"]
+        - !If [DeployAZThree, !Ref SubnetPrivateThree, !Ref "AWS::NoValue"]
 
-  # If compute resources need to access DynamoDB this allows them to talk to DynamoDB directly
-  # without needing to go via the NAT gateway. This reduces the amount of bandwidth through
-  # the gateway, reducing cost.
+  #############################################################################
+  # VPC ENDPOINTS
+  #############################################################################
+  # VPC endpoints allow private resources to communicate with AWS services
+  # without going through the NAT gateway. Benefits:
+  # - Lower latency: traffic stays on AWS backbone network
+  # - Cost savings: no NAT gateway data processing charges
+  # - Better security: traffic never traverses the public internet
+  #
+  # Gateway endpoints (like DynamoDB, S3) are free and add routes to route tables.
+  # Interface endpoints (most other services) cost ~$7/month per AZ and create ENIs.
+
+  # DynamoDB Gateway Endpoint - Allows private subnet resources to access
+  # DynamoDB tables without NAT gateway charges. Particularly valuable for
+  # applications with high DynamoDB throughput.
   DynamoDBEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -436,14 +608,51 @@ Resources:
             Principal: "*"
             Resource: "*"
       RouteTableIds:
-        - !Ref 'RouteTablePrivateOne'
-        - !Ref 'RouteTablePrivateTwo'
-        # - !Ref 'RouteTablePrivateThree'
+        - !If [DeployAZOne, !Ref RouteTablePrivateOne, !Ref "AWS::NoValue"]
+        - !If [DeployAZTwo, !Ref RouteTablePrivateTwo, !Ref "AWS::NoValue"]
+        - !If [DeployAZThree, !Ref RouteTablePrivateThree, !Ref "AWS::NoValue"]
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
       VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-dynamodb-endpoint
+
+  # S3 Gateway Endpoint - Allows private subnet resources to access S3 buckets
+  # without NAT gateway charges. Essential for applications that store/retrieve
+  # files, logs, or artifacts in S3. Also used by many AWS services internally.
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Principal: "*"
+            Resource: "*"
+      RouteTableIds:
+        - !If [DeployAZOne, !Ref RouteTablePrivateOne, !Ref "AWS::NoValue"]
+        - !If [DeployAZTwo, !Ref RouteTablePrivateTwo, !Ref "AWS::NoValue"]
+        - !If [DeployAZThree, !Ref RouteTablePrivateThree, !Ref "AWS::NoValue"]
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: awesome-s3-endpoint
 
 
-# We output values useful to other Cloudformation stacks
+#############################################################################
+# OUTPUTS
+#############################################################################
+# Exported values that other CloudFormation stacks can import using
+# Fn::ImportValue. This enables loose coupling between stacks - other stacks
+# reference these outputs by name rather than hardcoding resource IDs.
+#
+# Common consumers:
+# - ECS/Fargate services: need VPCId, private subnets, security groups
+# - RDS databases: need DBSubnetGroup
+# - Application Load Balancers: need public subnets
+# - Route53 records: need DNSZoneId
 Outputs:
   VPCId:
     Description: The ID of the VPC that this stack is deployed in
@@ -451,35 +660,41 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}:VPCId"
   SubnetPublicOne:
+    Condition: DeployAZOne
     Description: Public subnet one
     Value: !Ref 'SubnetPublicOne'
     Export:
       Name: !Sub "${AWS::StackName}:SubnetPublicOne"
   SubnetPublicTwo:
+    Condition: DeployAZTwo
     Description: Public subnet two
     Value: !Ref 'SubnetPublicTwo'
     Export:
       Name: !Sub "${AWS::StackName}:SubnetPublicTwo"
-  # SubnetPublicThree:
-  #   Description: Public subnet three
-  #   Value: !Ref 'SubnetPublicThree'
-  #   Export:
-  #     Name: !Sub "${AWS::StackName}:SubnetPublicThree"
+  SubnetPublicThree:
+    Condition: DeployAZThree
+    Description: Public subnet three
+    Value: !Ref 'SubnetPublicThree'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPublicThree"
   SubnetPrivateOne:
+    Condition: DeployAZOne
     Description: Private subnet one
     Value: !Ref 'SubnetPrivateOne'
     Export:
       Name: !Sub "${AWS::StackName}:SubnetPrivateOne"
   SubnetPrivateTwo:
+    Condition: DeployAZTwo
     Description: Private subnet two
     Value: !Ref 'SubnetPrivateTwo'
     Export:
       Name: !Sub "${AWS::StackName}:SubnetPrivateTwo"
-  # SubnetPrivateThree:
-  #   Description: Private subnet three
-  #   Value: !Ref 'SubnetPrivateThree'
-  #   Export:
-  #     Name: !Sub "${AWS::StackName}:SubnetPrivateThree"
+  SubnetPrivateThree:
+    Condition: DeployAZThree
+    Description: Private subnet three
+    Value: !Ref 'SubnetPrivateThree'
+    Export:
+      Name: !Sub "${AWS::StackName}:SubnetPrivateThree"
   Stage:
     Description: The stage
     Value: !Ref 'Stage'
@@ -521,17 +736,20 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}:AccountName'
   NatGatewayOnePublicIP:
+    Condition: DeployAZOne
     Description: The public IP of the first NAT gateway
     Value: !GetAtt 'ElasticIPNatGatewayOne.PublicIp'
     Export:
       Name: !Sub '${AWS::StackName}:NatGatewayOnePublicIP'
   NatGatewayTwoPublicIP:
+    Condition: DeployAZTwo
     Description: The public IP of the second NAT gateway
     Value: !GetAtt 'ElasticIPNatGatewayTwo.PublicIp'
     Export:
       Name: !Sub '${AWS::StackName}:NatGatewayTwoPublicIP'
-  # NatGatewayThreePublicIP:
-  #   Description: The public IP of the second NAT gateway
-  #   Value: !GetAtt 'ElasticIPNatGatewayThree.PublicIp'
-  #   Export:
-  #     Name: !Sub '${AWS::StackName}:NatGatewayThreePublicIP'
+  NatGatewayThreePublicIP:
+    Condition: DeployAZThree
+    Description: The public IP of the third NAT gateway
+    Value: !GetAtt 'ElasticIPNatGatewayThree.PublicIp'
+    Export:
+      Name: !Sub '${AWS::StackName}:NatGatewayThreePublicIP'
