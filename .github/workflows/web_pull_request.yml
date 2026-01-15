@@ -53,7 +53,7 @@ jobs:
       - name: Configure AWS credentials for deployment environment
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+          role-to-assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
           aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
       - name: Test AWS access credentials for dev account
