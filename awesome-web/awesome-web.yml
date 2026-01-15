@@ -43,6 +43,21 @@ Parameters:
       - 1
       - 0
     Default: 0
+  # ALB deployment parameters
+  DeployPublicALB:
+    Type: String
+    Description: Whether to deploy the public (internet-facing) load balancer (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 1
+  DeployPrivateALB:
+    Type: String
+    Description: Whether to deploy the private (internal) load balancer (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 0
 
 Mappings:
   RegionalConfigs:
@@ -101,6 +116,15 @@ Conditions:
   DeployAZOne: !Equals [!Ref DeployAZOne, 1]
   DeployAZTwo: !Equals [!Ref DeployAZTwo, 1]
   DeployAZThree: !Equals [!Ref DeployAZThree, 1]
+  DeployPublicALB: !Equals [!Ref DeployPublicALB, 1]
+  DeployPrivateALB: !Equals [!Ref DeployPrivateALB, 1]
+  # Compound conditions for additional SSL certificates on ALBs
+  DeployPublicALBAndAdditionalCert: !And
+    - !Condition DeployPublicALB
+    - !Condition AdditionalSSLCertProvided
+  DeployPrivateALBAndAdditionalCert: !And
+    - !Condition DeployPrivateALB
+    - !Condition AdditionalSSLCertProvided
 
 Resources:
   # Create an SSL certificate for *.Stage.BaseDomain, use DNS validation
@@ -174,6 +198,7 @@ Resources:
   # internet and directing it to public facing services
   LoadBalancerPublic:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: DeployPublicALB
     Properties:
       Scheme: internet-facing
       LoadBalancerAttributes:
@@ -199,6 +224,7 @@ Resources:
   # initially, before any real service target groups have been added.
   TargetGroupDummyPublic:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployPublicALB
     Properties:
       HealthCheckIntervalSeconds: 6
       HealthCheckPath: /
@@ -214,6 +240,7 @@ Resources:
   # This is the Public LB HTTPS listener which forwards traffic to the dummy target group
   LoadBalancerListenerPublic:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployPublicALB
     Properties:
       DefaultActions:
         - TargetGroupArn: !Ref 'TargetGroupDummyPublic'
@@ -228,7 +255,7 @@ Resources:
   # The default certificate covers only the base domain, this one covers additional domains
   LoadBalancerListenerPublicAdditionalCertificate:
     Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
-    Condition: AdditionalSSLCertProvided
+    Condition: DeployPublicALBAndAdditionalCert
     Properties:
       Certificates:
         - CertificateArn: !Ref 'AdditionalSSLCertificate'
@@ -237,6 +264,7 @@ Resources:
   # This is the Public LB HTTP listener which auto-upgrades any request to HTTPS
   LoadBalancerListenerHTTPSUpgradePublic:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployPublicALB
     Properties:
       DefaultActions:
         - RedirectConfig:
@@ -259,6 +287,7 @@ Resources:
   # The private facing load balancer, this is used for accepting traffic from internal clients
   LoadBalancerPrivate:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: DeployPrivateALB
     Properties:
       Scheme: internal
       LoadBalancerAttributes:
@@ -284,6 +313,7 @@ Resources:
   # initially, before any real service target groups have been added.
   TargetGroupDummyPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployPrivateALB
     Properties:
       HealthCheckIntervalSeconds: 6
       HealthCheckPath: /
@@ -299,6 +329,7 @@ Resources:
   # This is the Private LB HTTPS listener which forwards traffic to the dummy target group
   LoadBalancerListenerPrivate:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployPrivateALB
     Properties:
       DefaultActions:
         - TargetGroupArn: !Ref 'TargetGroupDummyPrivate'
@@ -313,7 +344,7 @@ Resources:
   # The default certificate covers only the base domain, this one covers additional domains
   LoadBalancerListenerPrivateAdditionalCertificate:
     Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
-    Condition: AdditionalSSLCertProvided
+    Condition: DeployPrivateALBAndAdditionalCert
     Properties:
       Certificates:
         - CertificateArn: !Ref 'AdditionalSSLCertificate'
@@ -322,6 +353,7 @@ Resources:
   # This is the Private LB HTTP listener which auto-upgrades any request to HTTPS
   LoadBalancerListenerHTTPSUpgradePrivate:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployPrivateALB
     Properties:
       DefaultActions:
         - RedirectConfig:
@@ -375,6 +407,7 @@ Resources:
 
   LambdaALBRulePriorityFixerPublic:
     Type: AWS::Lambda::Function
+    Condition: DeployPublicALB
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt LambdaRoleALBRulePriorityFixer.Arn
@@ -393,6 +426,7 @@ Resources:
 
   LambdaALBRulePriorityFixerPrivate:
     Type: AWS::Lambda::Function
+    Condition: DeployPrivateALB
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt LambdaRoleALBRulePriorityFixer.Arn
@@ -413,6 +447,7 @@ Resources:
   ## BEGIN DNS records
   DNSRecordLoadBalancerPublic:
     Type: AWS::Route53::RecordSet
+    Condition: DeployPublicALB
     Properties:
       Name: !Sub
         - 'lb-public.${DNSZoneName}'
@@ -425,6 +460,7 @@ Resources:
 
   DNSRecordLoadBalancerPrivate:
     Type: AWS::Route53::RecordSet
+    Condition: DeployPrivateALB
     Properties:
       Name: !Sub
         - 'lb-private.${DNSZoneName}'
@@ -539,11 +575,13 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}:ClusterName'
   HostnamePrivate:
+    Condition: DeployPrivateALB
     Description: The url of the internal load balancer
     Value: !Ref DNSRecordLoadBalancerPrivate
     Export:
       Name: !Sub '${AWS::StackName}:HostnamePrivate'
   HostnamePublic:
+    Condition: DeployPublicALB
     Description: The url of the external load balancer
     Value: !Ref DNSRecordLoadBalancerPublic
     Export:
@@ -559,6 +597,7 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}:ECSTaskExecutionRole'
   ListenerPublic:
+    Condition: DeployPublicALB
     Description: The ARN of the public load balancer's Listener
     Value: !Ref LoadBalancerListenerPublic
     Export:
@@ -574,15 +613,18 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}:SSLCertificateArn'
   ListenerPrivate:
-    Description: The ARN of the public load balancer's Listener
+    Condition: DeployPrivateALB
+    Description: The ARN of the private load balancer's Listener
     Value: !Ref LoadBalancerListenerPrivate
     Export:
       Name: !Sub '${AWS::StackName}:ListenerPrivate'
   LambdaALBRulePriorityFixerPublic:
+    Condition: DeployPublicALB
     Value: !GetAtt LambdaALBRulePriorityFixerPublic.Arn
     Export:
       Name: !Sub '${AWS::StackName}:LambdaALBRulePriorityFixerPublic'
   LambdaALBRulePriorityFixerPrivate:
+    Condition: DeployPrivateALB
     Value: !GetAtt LambdaALBRulePriorityFixerPrivate.Arn
     Export:
       Name: !Sub '${AWS::StackName}:LambdaALBRulePriorityFixerPrivate'

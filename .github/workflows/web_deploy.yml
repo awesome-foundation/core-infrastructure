@@ -21,6 +21,9 @@ env:
   DEPLOY_AZ_ONE: 1
   DEPLOY_AZ_TWO: 1
   DEPLOY_AZ_THREE: 0
+  # ALB deployment configuration (1=deploy, 0=skip)
+  DEPLOY_PUBLIC_ALB: 1
+  DEPLOY_PRIVATE_ALB: 0
 
 on:
   push:
@@ -65,4 +68,4 @@ jobs:
       - uses: allixsenos/install-rain@v1
 
       - name: Deploy Cloudformation template
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE,DeployPublicALB=$DEPLOY_PUBLIC_ALB,DeployPrivateALB=$DEPLOY_PRIVATE_ALB
