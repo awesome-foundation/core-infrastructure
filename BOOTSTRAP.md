@@ -208,6 +208,19 @@ Search for `example.dev` and replace with your domain.
 
 The VPC stack must be deployed first as other stacks depend on it.
 
+**Configure Availability Zones:**
+
+Before deploying, review the AZ configuration in `.github/workflows/vpc_deploy.yml`:
+
+```yaml
+env:
+  DEPLOY_AZ_ONE: 1    # 1=deploy, 0=skip
+  DEPLOY_AZ_TWO: 1
+  DEPLOY_AZ_THREE: 0  # Enable for 3-AZ redundancy
+```
+
+> **Note:** The VPC stack can technically run in a single AZ, but the Web stack requires at least 2 AZs due to ALB requirements. Configure at minimum `DEPLOY_AZ_ONE: 1` and `DEPLOY_AZ_TWO: 1`.
+
 **Trigger deployment:**
 - Push changes to `awesome-vpc/` on the `master` branch, OR
 - Manually trigger the `vpc_deploy.yml` workflow
@@ -215,8 +228,8 @@ The VPC stack must be deployed first as other stacks depend on it.
 The workflow deploys to all three environments (dev, test, prod) in parallel.
 
 **What gets created:**
-- VPC with public/private subnets across 2 AZs
-- Internet Gateway and NAT Gateways
+- VPC with public/private subnets across configured AZs
+- Internet Gateway and NAT Gateways (one per enabled AZ)
 - Route tables and security groups
 - Route53 hosted zone (`dev.yourdomain.com`, `test.yourdomain.com`, `prod.yourdomain.com`)
 - DynamoDB VPC endpoint
@@ -225,13 +238,26 @@ The workflow deploys to all three environments (dev, test, prod) in parallel.
 
 After VPC is deployed, deploy the web infrastructure.
 
+**Configure Availability Zones:**
+
+The Web stack must have matching AZ settings with the VPC stack. Review `.github/workflows/web_deploy.yml`:
+
+```yaml
+env:
+  DEPLOY_AZ_ONE: 1    # Must match VPC settings
+  DEPLOY_AZ_TWO: 1    # Must match VPC settings
+  DEPLOY_AZ_THREE: 0  # Must match VPC settings
+```
+
+> **Important:** The Web stack requires a minimum of 2 AZs because AWS Application Load Balancers must have subnets in at least 2 different Availability Zones. Attempting to deploy with only 1 AZ will fail.
+
 **Trigger deployment:**
 - Push changes to `awesome-web/` on the `master` branch, OR
 - Manually trigger the `web_deploy.yml` workflow
 
 **What gets created:**
 - ECS cluster (Fargate + Fargate Spot)
-- Public and private Application Load Balancers
+- Public and private Application Load Balancers (with subnets in each enabled AZ)
 - ACM SSL certificate (wildcard for `*.stage.yourdomain.com`)
 - ALB listener rules priority management Lambda
 - S3 bucket for ALB access logs

@@ -17,7 +17,10 @@ name: Web test and deploy on PR
 env:
   TEMPLATE_FILENAME: awesome-web/awesome-web.yml
   AWS_STACK_NAME: awesome-web
-  AWS_DEPLOY_ENVIRONMENT: dev
+  # AZ deployment configuration (must match VPC stack settings)
+  DEPLOY_AZ_ONE: 1
+  DEPLOY_AZ_TWO: 1
+  DEPLOY_AZ_THREE: 0
 
 on:
   pull_request:
@@ -53,10 +56,13 @@ jobs:
       - name: Test AWS access credentials for dev account
         run: aws sts get-caller-identity
 
+      - name: Ensure ECS service-linked role exists
+        run: aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com || true
+
       - uses: allixsenos/install-rain@v1
 
       - name: Create Cloudformation ChangeSet
-        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT
+        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE
 
       - name: Get latest changeset ID
         run: aws cloudformation list-change-sets --stack-name $AWS_STACK_NAME --query 'Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetId' --output text > changeset-id
@@ -82,7 +88,7 @@ jobs:
 
       - name: Deploy Cloudformation template to dev account
         if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr')
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT | tee rain-deploy.log
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE | tee rain-deploy.log
 
       - name: Rain Deploy log
         uses: thollander/actions-comment-pull-request@v2
@@ -93,4 +99,3 @@ jobs:
           filePath: rain-deploy.log
           comment_tag: raindeploy
           mode: recreate
-

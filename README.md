@@ -48,6 +48,39 @@ The infrastructure is deployed across three environments:
 
 Environment-specific configurations are managed through CloudFormation parameters, mappings, and condition statements.
 
+## Availability Zone Configuration
+
+The infrastructure supports flexible deployment across 1-3 Availability Zones per environment. This is configured via environment variables in the GitHub Actions workflows.
+
+### Configuration
+
+AZ deployment is controlled by three environment variables at the top of each workflow file:
+
+```yaml
+env:
+  DEPLOY_AZ_ONE: 1    # 1=deploy, 0=skip
+  DEPLOY_AZ_TWO: 1
+  DEPLOY_AZ_THREE: 0
+```
+
+### Stack Requirements
+
+| Stack | Minimum AZs | Notes |
+|-------|-------------|-------|
+| **awesome-vpc** | 1 | Can run with a single AZ for cost savings in dev/test |
+| **awesome-web** | 2 | ALB requires subnets in at least 2 different AZs |
+
+### Important: Keep Settings in Sync
+
+The VPC and Web stacks must have matching AZ configurations. The Web stack imports subnet references from the VPC stack - if a subnet doesn't exist, the deployment will fail.
+
+**Valid configurations:**
+- AZ One + AZ Two (minimum for web workloads)
+- AZ One + AZ Two + AZ Three (full redundancy)
+
+**Invalid configuration:**
+- Single AZ only (VPC will deploy, but Web stack will fail)
+
 ## Why We Use a Dedicated Infrastructure Domain
 
 This infrastructure uses a dedicated domain (e.g., `companyname.dev`) rather than subdomains of the production domain (e.g., `companyname.com`). This is an intentional architectural decision:
