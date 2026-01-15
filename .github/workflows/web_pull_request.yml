@@ -21,6 +21,9 @@ env:
   DEPLOY_AZ_ONE: 1
   DEPLOY_AZ_TWO: 1
   DEPLOY_AZ_THREE: 0
+  # ALB deployment configuration (1=deploy, 0=skip)
+  DEPLOY_PUBLIC_ALB: 1
+  DEPLOY_PRIVATE_ALB: 0
 
 on:
   pull_request:
@@ -62,7 +65,7 @@ jobs:
       - uses: allixsenos/install-rain@v1
 
       - name: Create Cloudformation ChangeSet
-        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE
+        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE,DeployPublicALB=$DEPLOY_PUBLIC_ALB,DeployPrivateALB=$DEPLOY_PRIVATE_ALB
 
       - name: Get latest changeset ID
         run: aws cloudformation list-change-sets --stack-name $AWS_STACK_NAME --query 'Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetId' --output text > changeset-id
@@ -88,7 +91,7 @@ jobs:
 
       - name: Deploy Cloudformation template to dev account
         if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr')
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE | tee rain-deploy.log
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE,DeployPublicALB=$DEPLOY_PUBLIC_ALB,DeployPrivateALB=$DEPLOY_PRIVATE_ALB | tee rain-deploy.log
 
       - name: Rain Deploy log
         uses: thollander/actions-comment-pull-request@v2
