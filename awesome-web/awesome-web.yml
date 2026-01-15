@@ -77,7 +77,14 @@ Conditions:
   AdditionalSSLCertProvided: !Not [!Equals [!Ref AdditionalSSLCertificate, '']]
 
 Resources:
-  # Create an SSL certificate for *.Stage.BaseDomain, use DNS validation
+
+  #############################################################################
+  # 1. SSL/TLS CERTIFICATES
+  #############################################################################
+  # AWS Certificate Manager certificates for HTTPS termination on load balancers.
+  # Uses DNS validation with automatic Route53 validation records.
+
+  # Wildcard certificate for *.stage.domain - covers all services in this environment
   SSLCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -93,9 +100,14 @@ Resources:
               - DNSZoneName: !ImportValue 'awesome-vpc:DNSZoneName'
           HostedZoneId: !ImportValue 'awesome-vpc:DNSZoneId'
 
-  ## BEGIN load balancing
-  # Create an S3 bucket to store the ALB logs in
-  ALBLogs: # Giving this a short name because the key becomes part of the unique bucket name
+  #############################################################################
+  # 2. ALB ACCESS LOGS (S3)
+  #############################################################################
+  # S3 bucket for storing Application Load Balancer access logs.
+  # Retained on stack deletion to preserve audit trail.
+
+  # Short name because CloudFormation appends it to create unique bucket name
+  ALBLogs:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -110,6 +122,7 @@ Resources:
         IgnorePublicAcls: True
         RestrictPublicBuckets: True
 
+  # Bucket policy allowing ALB and CloudWatch Logs to write access logs
   ALBLogsBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -144,8 +157,13 @@ Resources:
             Resource:
               - !Sub 'arn:aws:s3:::${ALBLogs}'
 
-  # A public facing load balancer, this is used for accepting traffic from the public
-  # internet and directing it to public facing services
+  #############################################################################
+  # 3. PUBLIC LOAD BALANCER
+  #############################################################################
+  # Internet-facing Application Load Balancer for public services.
+  # Placed in public subnets to receive traffic from the internet gateway.
+
+  # Public ALB - accepts traffic from the internet and routes to public services
   LoadBalancerPublic:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -168,8 +186,7 @@ Resources:
       SecurityGroups:
         - !ImportValue 'awesome-vpc:SecurityGroupVeryPermissive'
 
-  # A dummy target group is used to setup the ALB to just drop traffic
-  # initially, before any real service target groups have been added.
+  # Placeholder target group - ALB requires a default target; services add their own rules
   TargetGroupDummyPublic:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -184,7 +201,7 @@ Resources:
       UnhealthyThresholdCount: 2
       VpcId: !ImportValue 'awesome-vpc:VPCId'
 
-  # This is the Public LB HTTPS listener which forwards traffic to the dummy target group
+  # HTTPS listener (port 443) - main entry point, forwards to dummy target by default
   LoadBalancerListenerPublic:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -198,7 +215,7 @@ Resources:
         - CertificateArn: !Ref 'SSLCertificate'
       SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06'
 
-  # The default certificate covers only the base domain, this one covers additional domains
+  # Optional additional SSL certificate for extra domains (e.g., vanity domains)
   LoadBalancerListenerPublicAdditionalCertificate:
     Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
     Condition: AdditionalSSLCertProvided
@@ -207,7 +224,7 @@ Resources:
         - CertificateArn: !Ref 'AdditionalSSLCertificate'
       ListenerArn: !Ref LoadBalancerListenerPublic
 
-  # This is the Public LB HTTP listener which auto-upgrades any request to HTTPS
+  # HTTP listener (port 80) - redirects all traffic to HTTPS (301 permanent redirect)
   LoadBalancerListenerHTTPSUpgradePublic:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -229,7 +246,13 @@ Resources:
           - id: W56
             reason: "This is the HTTP to HTTPS upgrade listener, it's supposed to be HTTP."
 
-  # The private facing load balancer, this is used for accepting traffic from internal clients
+  #############################################################################
+  # 4. PRIVATE LOAD BALANCER
+  #############################################################################
+  # Internal Application Load Balancer for private/internal services.
+  # Placed in private subnets - not accessible from the internet.
+
+  # Private ALB - for service-to-service communication within the VPC
   LoadBalancerPrivate:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -252,8 +275,7 @@ Resources:
       SecurityGroups:
         - !ImportValue 'awesome-vpc:SecurityGroupVeryPermissive'
 
-  # This dummy target group is used to setup the ALB to just drop traffic
-  # initially, before any real service target groups have been added.
+  # Placeholder target group - ALB requires a default target; services add their own rules
   TargetGroupDummyPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -268,7 +290,7 @@ Resources:
       UnhealthyThresholdCount: 2
       VpcId: !ImportValue 'awesome-vpc:VPCId'
 
-  # This is the Private LB HTTPS listener which forwards traffic to the dummy target group
+  # HTTPS listener (port 443) - main entry point, forwards to dummy target by default
   LoadBalancerListenerPrivate:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -282,7 +304,7 @@ Resources:
         - CertificateArn: !Ref 'SSLCertificate'
       SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06'
 
-  # The default certificate covers only the base domain, this one covers additional domains
+  # Optional additional SSL certificate for extra domains
   LoadBalancerListenerPrivateAdditionalCertificate:
     Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
     Condition: AdditionalSSLCertProvided
@@ -291,7 +313,7 @@ Resources:
         - CertificateArn: !Ref 'AdditionalSSLCertificate'
       ListenerArn: !Ref LoadBalancerListenerPrivate
 
-  # This is the Private LB HTTP listener which auto-upgrades any request to HTTPS
+  # HTTP listener (port 80) - redirects all traffic to HTTPS (301 permanent redirect)
   LoadBalancerListenerHTTPSUpgradePrivate:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -312,10 +334,15 @@ Resources:
         rules_to_suppress:
           - id: W56
             reason: "This is the HTTP to HTTPS upgrade listener, it's supposed to be HTTP."
-  ## END load balancing
 
-  ## BEGIN ALB rule priority assignment lambda
-  # lifted from https://stackoverflow.com/questions/50003378/automatically-set-listenerrule-priority-in-cloudformation-template
+  #############################################################################
+  # 5. ALB RULE PRIORITY LAMBDA
+  #############################################################################
+  # Lambda function that automatically assigns unique priorities to ALB listener rules.
+  # Each service stack calls this as a custom resource to get a unique priority number.
+  # Ref: https://stackoverflow.com/questions/50003378/automatically-set-listenerrule-priority-in-cloudformation-template
+
+  # IAM role for the priority allocation Lambda
   LambdaRoleALBRulePriorityFixer:
     Type: AWS::IAM::Role
     Properties:
@@ -345,6 +372,7 @@ Resources:
           - id: W11
             reason: "Rule Priority Lambda needs this policy to do its thing."
 
+  # Lambda for public ALB rule priority allocation
   LambdaALBRulePriorityFixerPublic:
     Type: AWS::Lambda::Function
     Properties:
@@ -363,6 +391,7 @@ Resources:
           - id: W89
             reason: "Lambdas definitely should not be deployed in a VPC."
 
+  # Lambda for private ALB rule priority allocation
   LambdaALBRulePriorityFixerPrivate:
     Type: AWS::Lambda::Function
     Properties:
@@ -380,9 +409,14 @@ Resources:
         rules_to_suppress:
           - id: W89
             reason: "Lambdas definitely should not be deployed in a VPC."
-  ## END ALB rule priority assignment lambda
 
-  ## BEGIN DNS records
+  #############################################################################
+  # 6. DNS RECORDS
+  #############################################################################
+  # Route53 CNAME records pointing to the load balancers.
+  # Services create their own DNS records pointing to these canonical names.
+
+  # lb-public.stage.domain -> public ALB
   DNSRecordLoadBalancerPublic:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -395,6 +429,7 @@ Resources:
       ResourceRecords:
         - !GetAtt 'LoadBalancerPublic.DNSName'
 
+  # lb-private.stage.domain -> private ALB
   DNSRecordLoadBalancerPrivate:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -407,10 +442,12 @@ Resources:
       ResourceRecords:
         - !GetAtt 'LoadBalancerPrivate.DNSName'
 
-  ## END DNS records
+  #############################################################################
+  # 7. ECS CLUSTER
+  #############################################################################
+  # Fargate-based ECS cluster for running containerized services.
+  # Named "default" for simpler CLI/API access (no --cluster flag needed).
 
-  # ECS Cluster
-  # Calling it "default" simplifies addressing it from CLI and API.
   DefaultECSCluster:
     DependsOn: ECSRole
     Type: AWS::ECS::Cluster
@@ -423,10 +460,12 @@ Resources:
         - Name: containerInsights
           Value: enhanced # enhanced container insights must be enabled at account level :rolleyes:
 
-  # This is an IAM role which authorizes ECS to manage resources on your
-  # account on your behalf, such as updating your load balancer with the
-  # details of where your containers are, so that traffic can reach your
-  # containers.
+  #############################################################################
+  # 8. IAM ROLES
+  #############################################################################
+  # IAM roles for ECS service and task execution.
+
+  # ECS service role - allows ECS to manage network interfaces and load balancers
   ECSRole:
     Type: AWS::IAM::Role
     Properties:
@@ -467,7 +506,7 @@ Resources:
           - id: W11
             reason: "ECS needs this policy to do its thing."
 
-  # This is a role which is used to launch ECS tasks
+  # ECS task execution role - allows tasks to pull images from ECR and write logs
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -501,9 +540,12 @@ Resources:
           - id: W11
             reason: "ECS needs this policy to do its thing."
 
-# These are the values output by the CloudFormation template. Be careful
-# about changing any of them, because of them are exported with specific
-# names so that the other task related CF templates can use them.
+###############################################################################
+# OUTPUTS
+###############################################################################
+# Exported values for use by service stacks. Be careful changing these -
+# other stacks depend on these exact export names.
+
 Outputs:
   ClusterName:
     Description: The name of the ECS cluster

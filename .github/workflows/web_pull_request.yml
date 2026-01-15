@@ -17,7 +17,6 @@ name: Web test and deploy on PR
 env:
   TEMPLATE_FILENAME: awesome-web/awesome-web.yml
   AWS_STACK_NAME: awesome-web
-  AWS_DEPLOY_ENVIRONMENT: dev
 
 on:
   pull_request:
@@ -56,7 +55,7 @@ jobs:
       - uses: allixsenos/install-rain@v1
 
       - name: Create Cloudformation ChangeSet
-        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT
+        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y
 
       - name: Get latest changeset ID
         run: aws cloudformation list-change-sets --stack-name $AWS_STACK_NAME --query 'Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetId' --output text > changeset-id
@@ -82,7 +81,7 @@ jobs:
 
       - name: Deploy Cloudformation template to dev account
         if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr')
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=$AWS_DEPLOY_ENVIRONMENT | tee rain-deploy.log
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y | tee rain-deploy.log
 
       - name: Rain Deploy log
         uses: thollander/actions-comment-pull-request@v2
