@@ -20,6 +20,29 @@ Parameters:
     Type: String
     Description: ARN of an additional SSL certificate to attach to the load balancers (for example, to cover additional domains)
     Default: ''
+  # AZ deployment parameters - must match VPC stack settings
+  # Using 0/1 instead of yes/no due to rain/CloudFormation boolean vs string collision
+  DeployAZOne:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone One (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 1
+  DeployAZTwo:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone Two (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 1
+  DeployAZThree:
+    Type: String
+    Description: Whether to deploy resources in Availability Zone Three (1=yes, 0=no)
+    AllowedValues:
+      - 1
+      - 0
+    Default: 0
 
 Mappings:
   RegionalConfigs:
@@ -75,6 +98,9 @@ Mappings:
 
 Conditions:
   AdditionalSSLCertProvided: !Not [!Equals [!Ref AdditionalSSLCertificate, '']]
+  DeployAZOne: !Equals [!Ref DeployAZOne, 1]
+  DeployAZTwo: !Equals [!Ref DeployAZTwo, 1]
+  DeployAZThree: !Equals [!Ref DeployAZThree, 1]
 
 Resources:
   # Create an SSL certificate for *.Stage.BaseDomain, use DNS validation
@@ -162,9 +188,10 @@ Resources:
       Subnets:
         # The load balancer is placed into the public subnets, so that traffic
         # from the internet can reach the load balancer directly via the internet gateway
-        - !ImportValue 'awesome-vpc:SubnetPublicOne'
-        - !ImportValue 'awesome-vpc:SubnetPublicTwo'
-        # - !ImportValue 'awesome-vpc:SubnetPublicThree'
+        # Note: ALBs require at least 2 subnets in different AZs
+        - !If [DeployAZOne, !ImportValue 'awesome-vpc:SubnetPublicOne', !Ref 'AWS::NoValue']
+        - !If [DeployAZTwo, !ImportValue 'awesome-vpc:SubnetPublicTwo', !Ref 'AWS::NoValue']
+        - !If [DeployAZThree, !ImportValue 'awesome-vpc:SubnetPublicThree', !Ref 'AWS::NoValue']
       SecurityGroups:
         - !ImportValue 'awesome-vpc:SecurityGroupVeryPermissive'
 
@@ -246,9 +273,10 @@ Resources:
       Subnets:
         # This load balancer is put into the private subnet, so that there is no
         # route for the public to even be able to access the private load balancer.
-        - !ImportValue 'awesome-vpc:SubnetPrivateOne'
-        - !ImportValue 'awesome-vpc:SubnetPrivateTwo'
-        # - !ImportValue 'awesome-vpc:SubnetPrivateThree'
+        # Note: ALBs require at least 2 subnets in different AZs
+        - !If [DeployAZOne, !ImportValue 'awesome-vpc:SubnetPrivateOne', !Ref 'AWS::NoValue']
+        - !If [DeployAZTwo, !ImportValue 'awesome-vpc:SubnetPrivateTwo', !Ref 'AWS::NoValue']
+        - !If [DeployAZThree, !ImportValue 'awesome-vpc:SubnetPrivateThree', !Ref 'AWS::NoValue']
       SecurityGroups:
         - !ImportValue 'awesome-vpc:SecurityGroupVeryPermissive'
 

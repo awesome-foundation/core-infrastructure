@@ -17,6 +17,10 @@ name: Web deploy
 env:
   TEMPLATE_FILENAME: awesome-web/awesome-web.yml
   AWS_STACK_NAME: awesome-web
+  # AZ deployment configuration (must match VPC stack settings)
+  DEPLOY_AZ_ONE: 1
+  DEPLOY_AZ_TWO: 1
+  DEPLOY_AZ_THREE: 0
 
 on:
   push:
@@ -37,13 +41,10 @@ jobs:
 
     strategy:
       matrix:
-        include: # There is a separate workflow for PR based development = vpc_pull_request.yml
-          - aws_account_stage: dev
-            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
-          - aws_account_stage: test
-            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_TEST }}
-          - aws_account_stage: prod
-            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_PROD }}
+        include: # There is a separate workflow for PR based development = web_pull_request.yml
+          - aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+          - aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_TEST }}
+          - aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_PROD }}
 
     steps:
       - name: Checkout code
@@ -55,10 +56,13 @@ jobs:
           role-to-assume: ${{ matrix.aws_role_to_assume }}
           aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
 
-      - name: Test AWS access credentials for ${{ matrix.aws_account_stage }} account
+      - name: Test AWS access credentials
         run: aws sts get-caller-identity
+
+      - name: Ensure ECS service-linked role exists
+        run: aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com || true
 
       - uses: allixsenos/install-rain@v1
 
-      - name: Deploy Cloudformation template to ${{ matrix.aws_account_stage }} account
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params Stage=${{ matrix.aws_account_stage }}
+      - name: Deploy Cloudformation template
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE
