@@ -26,6 +26,7 @@ env:
   DEPLOY_PRIVATE_ALB: 0
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:

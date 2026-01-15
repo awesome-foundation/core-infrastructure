@@ -19,6 +19,7 @@ env:
   AWS_STACK_NAME: awesome-vpc
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
