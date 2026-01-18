@@ -413,7 +413,7 @@ Resources:
       Role: !GetAtt LambdaRoleALBRulePriorityFixer.Arn
       Code:
         ZipFile: !Rain::Embed allocate_alb_rule_priority.py
-      Runtime: python3.8
+      Runtime: python3.12
       Timeout: "30"
       Environment:
         Variables:
@@ -432,7 +432,7 @@ Resources:
       Role: !GetAtt LambdaRoleALBRulePriorityFixer.Arn
       Code:
         ZipFile: !Rain::Embed allocate_alb_rule_priority.py
-      Runtime: python3.8
+      Runtime: python3.12
       Timeout: "30"
       Environment:
         Variables:
