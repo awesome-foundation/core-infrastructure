@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Security group auto-synced with Cloudflare proxy IP ranges.
+  A Lambda function periodically fetches the latest Cloudflare IPs and
+  reconciles the SG ingress rules (add new, remove stale).
+  Notifications are published to an SNS topic on every sync.
+
+Parameters:
+  VpcStackName:
+    Type: String
+    Description: Name of the VPC CloudFormation stack to import networking resources from.
+    Default: awesome-vpc
+
+  Ports:
+    Type: String
+    Description: Comma-separated list of TCP ports to allow from Cloudflare IPs.
+    Default: '443'
+
+  ScheduleExpression:
+    Type: String
+    Description: EventBridge schedule expression for the sync Lambda.
+    Default: rate(6 hours)
+
+  NotificationEmail:
+    Type: String
+    Description: >-
+      Email address for SNS notifications. Leave empty to skip the
+      email subscription (the topic is always created).
+    Default: ''
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref NotificationEmail, '']]
+
+Resources:
+
+  # ---------- Security Group ----------
+
+  CloudflareSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows inbound traffic from Cloudflare proxy IPs only
+      VpcId:
+        Fn::ImportValue: !Sub '${VpcStackName}:VPCId'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudflare'
+        - Key: ManagedBy
+          Value: !Sub '${AWS::StackName}-lambda'
+
+  # ---------- SNS ----------
+
+  SnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-notifications'
+
+  SnsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref SnsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # ---------- IAM ----------
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: cloudflare-sg-sync
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-sync:*'
+              - Sid: DescribeSG
+                Effect: Allow
+                Action:
+                  - ec2:DescribeSecurityGroups
+                Resource: '*'
+              - Sid: MutateSG
+                Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${CloudflareSG}'
+              - Sid: Notify
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref SnsTopic
+
+  # ---------- Lambda ----------
+
+  SyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-sync'
+      Description: Sync Cloudflare IP ranges into the security group
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 128
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          SECURITY_GROUP_ID: !Ref CloudflareSG
+          PORTS: !Ref Ports
+          SNS_TOPIC_ARN: !Ref SnsTopic
+      Code:
+        ZipFile: !Rain::Embed cloudflare_sg_sync.py
+
+  # ---------- EventBridge ----------
+
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-schedule'
+      Description: Periodically sync Cloudflare IP ranges into the security group
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: sync-lambda
+          Arn: !GetAtt SyncFunction.Arn
+
+  LambdaSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleRule.Arn
+
+  # ---------- Custom Resource (initial sync) ----------
+
+  InitialSync:
+    Type: Custom::CloudflareIPSync
+    DependsOn:
+      - LambdaSchedulePermission
+    Properties:
+      ServiceToken: !GetAtt SyncFunction.Arn
+      # Change this value to force re-sync on stack update
+      SyncTrigger: !Ref Ports
+
+Outputs:
+  SecurityGroupId:
+    Description: Security group ID managed by Cloudflare IP sync
+    Value: !Ref CloudflareSG
+    Export:
+      Name: !Sub '${AWS::StackName}:SecurityGroupId'
+
+  SnsTopicArn:
+    Description: SNS topic ARN for sync notifications
+    Value: !Ref SnsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}:SnsTopicArn'
