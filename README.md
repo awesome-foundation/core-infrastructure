@@ -17,6 +17,7 @@ The infrastructure follows a layered approach:
 ### Foundation Layer
 
 - [**awesome-vpc**](./awesome-vpc/) - Core VPC infrastructure with public and private subnets, security groups, and network ACLs
+- [**awesome-cloudflare-sg**](./awesome-cloudflare-sg/) - Security group auto-synced with Cloudflare proxy IP ranges (Lambda + EventBridge)
 - [**github_actions_oidc**](./github_actions_oidc/) - OpenID Connect integration between GitHub Actions and AWS for secure, token-based CI/CD access
 
 ### Compute Layer
@@ -126,6 +127,7 @@ The convention is: `{service}.{stage}.{infra-domain}` (e.g., `api.prod.companyna
 ```
 core-infrastructure/
 ├── awesome-bastion/         # SSH bastion host
+├── awesome-cloudflare-sg/   # Cloudflare IP security group (auto-syncing)
 ├── awesome-haproxy/         # HAProxy sidecar
 ├── awesome-vpc/             # Core VPC infrastructure
 ├── awesome-web/             # Web application infrastructure

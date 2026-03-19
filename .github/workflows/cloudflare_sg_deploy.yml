@@ -1,0 +1,65 @@
+# Copyright 2025 Luka Kladarić, Chaos Guru
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Cloudflare SG deploy
+
+env:
+  TEMPLATE_FILENAME: awesome-cloudflare-sg/awesome-cloudflare-sg.yml
+  AWS_STACK_NAME: awesome-cloudflare-sg
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/cloudflare_sg_*.yml'
+      - 'awesome-cloudflare-sg/**'
+      - '!**/*.md'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Cloudflare SG deploy
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - aws_account_stage: dev
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_DEV }}
+          - aws_account_stage: test
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_TEST }}
+          - aws_account_stage: prod
+            aws_role_to_assume: ${{ vars.AWESOME_AWS_DEPLOY_ROLE_PROD }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for deployment environment
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ matrix.aws_role_to_assume }}
+          aws-region: ${{ vars.AWESOME_AWS_DEFAULT_REGION }}
+
+      - name: Test AWS access credentials for ${{ matrix.aws_account_stage }} account
+        run: aws sts get-caller-identity
+
+      - uses: allixsenos/install-rain@v1
+
+      - name: Deploy Cloudformation template to ${{ matrix.aws_account_stage }} account
+        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y
