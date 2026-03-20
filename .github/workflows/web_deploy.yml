@@ -40,6 +40,7 @@ permissions:
 
 jobs:
   deploy-vpc:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: Web deploy
     runs-on: ubuntu-latest
 

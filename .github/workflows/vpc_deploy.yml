@@ -33,6 +33,7 @@ permissions:
 
 jobs:
   deploy-vpc:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: VPC deploy
     runs-on: ubuntu-latest
 

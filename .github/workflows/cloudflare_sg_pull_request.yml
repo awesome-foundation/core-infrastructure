@@ -36,6 +36,7 @@ permissions:
 
 jobs:
   preview:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: Cloudflare SG test and maybe deploy
     runs-on: ubuntu-latest
 

@@ -41,6 +41,7 @@ permissions:
 
 jobs:
   deploy-aws-sso:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: AWS SSO Deploy
     runs-on: ubuntu-latest
     # Only run this job if the PR is labeled with 'deploy-pr' or if the push is to master

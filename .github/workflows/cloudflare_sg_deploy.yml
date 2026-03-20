@@ -33,6 +33,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: Cloudflare SG deploy
     runs-on: ubuntu-latest
 

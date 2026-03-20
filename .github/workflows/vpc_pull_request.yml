@@ -37,6 +37,7 @@ permissions:
 
 jobs:
   deploy-awesome-vpc:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: VPC test and maybe deploy
     runs-on: ubuntu-latest
 

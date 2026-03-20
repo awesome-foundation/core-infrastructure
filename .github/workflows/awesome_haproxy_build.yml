@@ -41,6 +41,7 @@ permissions:
 
 jobs:
   build:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: Build for ${{ matrix.aws_account_stage}}
     runs-on: ubuntu-latest
 

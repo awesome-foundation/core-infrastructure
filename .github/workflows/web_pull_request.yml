@@ -43,6 +43,7 @@ permissions:
 
 jobs:
   deploy-awesome-web:
+    if: github.repository != 'awesome-foundation/core-infrastructure'
     name: Web test and maybe deploy
     runs-on: ubuntu-latest
 
