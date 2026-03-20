@@ -37,7 +37,8 @@ permissions:
 
 jobs:
   deploy-awesome-vpc:
-    if: github.repository != 'awesome-foundation/core-infrastructure'
+    if: github.repository != 'awesome-foundation/core-infrastructure' # Do not run in the template repository — you may delete this line, it has no effect in your repo
+
     name: VPC test and maybe deploy
     runs-on: ubuntu-latest
 

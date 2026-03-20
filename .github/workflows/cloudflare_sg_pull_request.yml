@@ -36,7 +36,8 @@ permissions:
 
 jobs:
   preview:
-    if: github.repository != 'awesome-foundation/core-infrastructure'
+    if: github.repository != 'awesome-foundation/core-infrastructure' # Do not run in the template repository — you may delete this line, it has no effect in your repo
+
     name: Cloudflare SG test and maybe deploy
     runs-on: ubuntu-latest
 
