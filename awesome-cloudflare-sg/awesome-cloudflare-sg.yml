@@ -28,6 +28,14 @@ Parameters:
       email subscription (the topic is always created).
     Default: ''
 
+  NotifyOnNoChanges:
+    Type: String
+    Description: >-
+      Publish SNS notification even when no rules changed.
+      Errors and actual changes always notify regardless.
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+
 Conditions:
   HasEmail: !Not [!Equals [!Ref NotificationEmail, '']]
 
@@ -121,6 +129,7 @@ Resources:
           SECURITY_GROUP_ID: !Ref CloudflareSG
           PORTS: !Ref Ports
           SNS_TOPIC_ARN: !Ref SnsTopic
+          NOTIFY_ON_NO_CHANGES: !Ref NotifyOnNoChanges
       Code:
         ZipFile: !Rain::Embed cloudflare_sg_sync.py
 

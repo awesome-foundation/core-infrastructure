@@ -36,6 +36,7 @@ sns = boto3.client("sns")
 SG_ID: str = os.environ.get("SECURITY_GROUP_ID", "")
 PORTS: list[int] = [int(p.strip()) for p in os.environ.get("PORTS", "443").split(",") if p.strip()]
 SNS_TOPIC_ARN: str = os.environ.get("SNS_TOPIC_ARN", "")
+NOTIFY_ON_NO_CHANGES: bool = os.environ.get("NOTIFY_ON_NO_CHANGES", "false") == "true"
 
 CF_URLS = [
     "https://www.cloudflare.com/ips-v4",
@@ -223,8 +224,10 @@ def sync() -> dict[str, int]:
     else:
         subject += " — no changes"
 
-    notify(subject, summary)
+    # Always log, but only notify SNS when there are changes, errors, or opt-in
     logger.info(summary)
+    if added or removed or all_errors or total_rules > SG_RULE_LIMIT or NOTIFY_ON_NO_CHANGES:
+        notify(subject, summary)
 
     return {"added": added, "removed": removed, "errors": len(all_errors)}
 
