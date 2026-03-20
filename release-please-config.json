@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separate-pull-requests": true,
+  "packages": {
+    "awesome-vpc": {
+      "component": "awesome-vpc"
+    },
+    "awesome-web": {
+      "component": "awesome-web"
+    },
+    "awesome-bastion": {
+      "component": "awesome-bastion"
+    },
+    "awesome-haproxy": {
+      "component": "awesome-haproxy"
+    },
+    "awesome-cloudflare-sg": {
+      "component": "awesome-cloudflare-sg"
+    },
+    "aws_sso": {
+      "component": "aws-sso"
+    },
+    "github_actions_oidc": {
+      "component": "github-actions-oidc"
+    }
+  }
+}
