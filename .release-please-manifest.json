@@ -1,0 +1,9 @@
+{
+  "awesome-vpc": "0.0.0",
+  "awesome-web": "0.0.0",
+  "awesome-bastion": "0.0.0",
+  "awesome-haproxy": "0.0.0",
+  "awesome-cloudflare-sg": "0.0.0",
+  "aws_sso": "0.0.0",
+  "github_actions_oidc": "0.0.0"
+}
