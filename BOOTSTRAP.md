@@ -74,13 +74,20 @@ In the root account:
 
 This must be done manually first to bootstrap CI/CD.
 
-> **Check the subject claim format first.** GitHub issues OIDC tokens in a new format. This applies to every repository created, renamed, or transferred on or after July 15, 2026. The parameter below matches the old format only. Run `gh api /repos/OWNER/REPO/actions/oidc/customization/sub` and read `sub_claim_prefix`. If that value contains `@`, the repository uses the new format, and you have to widen the trust policy. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims).
+GitHub issues OIDC tokens in a new format that carries permanent numeric IDs. This applies to every repository created, renamed, or transferred on or after July 15, 2026. The template takes one parameter per format, and it trusts every parameter that you set. Set both. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims).
+
+Read the two numeric IDs first:
+
+```bash
+gh api /repos/your-github-org/core-infrastructure --jq '.owner.id, .id'
+```
 
 1. Log into the **root account** via AWS Console
 2. Go to **CloudFormation** → **Create stack**
 3. Upload `github_actions_oidc/github_actions.yml`
 4. Parameters:
-   - **TrustedGithubOrgOrRepo**: `your-github-org/core-infrastructure` (grant access only to this repository)
+   - **TrustedGithubOrgOrRepoImmutable**: `your-github-org@ORG_ID/core-infrastructure@REPO_ID` (new format, grant access only to this repository)
+   - **TrustedGithubOrgOrRepo**: `your-github-org/core-infrastructure` (old format, the same repository)
 5. Stack name: `github-actions-oidc`
 6. Create the stack
 
@@ -112,10 +119,11 @@ The StackSet deployment is automated via the `github_actions_oidc_stackset.yml` 
 The workflow will:
 1. Create/update a CloudFormation StackSet named `github-actions-oidc`
 2. Deploy to all member accounts in the organization
-3. Set `TrustedGithubOrgOrRepo` to `your-github-org/*` (all org repos)
-4. Enable auto-deployment for any new accounts added to the organization
+3. Set `TrustedGithubOrgOrRepoImmutable` to `your-github-org@ORG_ID/*` (all org repos, new format)
+4. Set `TrustedGithubOrgOrRepo` to `your-github-org/*` (all org repos, old format)
+5. Enable auto-deployment for any new accounts added to the organization
 
-The `your-github-org/*` value covers name-based tokens only. Repositories on the new subject claim format present `repo:your-github-org@ORG_ID/...`, which this value does not match. To cover both, edit the `sub` condition in `github_actions.yml` to accept a list of patterns. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#how-to-update-the-trust-policy).
+Steps 3 and 4 need no manual input. The workflow reads the organization name and ID from the `github.repository_owner` and `github.repository_owner_id` context values.
 
 ### 2.4 Verify OIDC Roles
 
@@ -493,7 +501,7 @@ After completing the bootstrap, verify:
 1. Verify the OIDC provider exists in the target account
 2. Check the trusted repository/org matches your GitHub org
 3. Ensure the workflow has `id-token: write` permission
-4. Compare the subject claim format. Run `gh api /repos/OWNER/REPO/actions/oidc/customization/sub` and read `sub_claim_prefix`. A value that contains `@` means the repository uses the immutable format, and a name-based trust policy rejects it. The error text is `Not authorized to perform sts:AssumeRoleWithWebIdentity`. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims)
+4. Compare the subject claim format. Run `gh api /repos/OWNER/REPO/actions/oidc/customization/sub` and read `sub_claim_prefix`. A value that contains `@` means the repository uses the immutable format. Make sure `TrustedGithubOrgOrRepoImmutable` is set on the stack in the target account. The error text is `Not authorized to perform sts:AssumeRoleWithWebIdentity`. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims)
 
 A repository that worked last week and fails now is the common case here. A rename or a transfer moves the repository to the new format.
 
