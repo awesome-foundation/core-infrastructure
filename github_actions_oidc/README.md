@@ -42,7 +42,121 @@ The OIDC integration follows this process:
    * The workflow presents this token to AWS STS to assume the IAM role
    * AWS validates the token and grants temporary credentials if conditions match
 
+## Immutable Subject Claims
+
+GitHub changed the format of the `sub` claim in Actions OIDC tokens. A trust policy that matches only the old format will reject the token.
+
+### What changed
+
+Old format:
+
+```
+repo:my-org/my-repo:ref:refs/heads/main
+```
+
+New format:
+
+```
+repo:my-org@144436715/my-repo@1109355301:ref:refs/heads/main
+```
+
+The number after each `@` is the permanent numeric ID of the owner and of the repository. GitHub assigns these IDs when you create the resource. A rename or a transfer does not change them.
+
+### Why GitHub made this change
+
+The old format used names only. A name becomes free when you release it, and another account can then claim it. If you deleted or renamed a repository, that account could take the old name and mint tokens with the same `sub` claim. That account could then assume your IAM role. Numeric IDs are unique and permanent, so this attack no longer works.
+
+### Which repositories use which format
+
+| Repository | Format |
+|---|---|
+| Created before July 15, 2026 | Old, until you opt in |
+| Created on or after July 15, 2026 | New, always |
+| Renamed or transferred on or after July 15, 2026 | New, always |
+
+Read the third row carefully. A rename or a transfer moves a repository to the new format even if you created it years earlier. This is the case that surprises people, because the repository worked yesterday.
+
+### Effect on this template
+
+`github_actions.yml` matches the subject claim with `StringLike`:
+
+```yaml
+StringLike:
+  token.actions.githubusercontent.com:sub: !Sub 'repo:${TrustedGithubOrgOrRepo}:*'
+```
+
+Set `TrustedGithubOrgOrRepo` to `your-org/*` and the pattern becomes `repo:your-org/*:*`. That pattern requires the literal text `repo:your-org/`. A token in the new format starts with `repo:your-org@144436715/`. The two do not match. AWS STS then returns:
+
+```
+Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+The error names no claim and no value, so the cause is not obvious. The single-repository parameter used for the root account fails the same way.
+
+### How to read the format of a repository
+
+```bash
+gh api /repos/OWNER/REPO/actions/oidc/customization/sub
+```
+
+The response gives the exact prefix that your trust policy has to match:
+
+```json
+{
+  "use_default": true,
+  "use_immutable_subject": false,
+  "sub_claim_prefix": "repo:your-org/your-repo"
+}
+```
+
+Treat `sub_claim_prefix` as authoritative and copy it into the trust policy. Do not assemble the prefix by hand.
+
+### How to update the trust policy
+
+Accept both formats while you migrate. The `sub` condition takes a list, and IAM applies OR across the values:
+
+```yaml
+StringLike:
+  token.actions.githubusercontent.com:sub:
+    - 'repo:your-org/*'              # old format
+    - 'repo:your-org@144436715/*'    # new format
+```
+
+Read your organization ID with:
+
+```bash
+gh api /orgs/YOUR-ORG --jq '.id'
+```
+
+Delete the old pattern after every repository in the organization uses the new format.
+
+### Do not put a wildcard on the numeric ID
+
+This pattern looks convenient and it is not safe:
+
+```yaml
+# WRONG. Do not use this.
+token.actions.githubusercontent.com:sub: 'repo:your-org*/*'
+```
+
+The text `your-org*` also matches `your-org-attacker`. Anyone can create that organization on GitHub and assume your role. Write the numeric ID in full.
+
+### How to opt in early
+
+Move one repository to the new format:
+
+```bash
+gh api -X PUT /repos/OWNER/REPO/actions/oidc/customization/sub \
+  -F use_default=true -F use_immutable_subject=true
+```
+
+An organization-wide switch exists in organization settings, and on the `PUT /orgs/{org}/actions/oidc/customization/sub` endpoint.
+
+Update the trust policy before you opt in. A repository that switches format ahead of its trust policy loses AWS access on the next workflow run.
+
 ## Deployment Model
+
+Read [Immutable Subject Claims](#immutable-subject-claims) before you set `TrustedGithubOrgOrRepo`. The values below match name-based tokens only.
 
 The template is deployed using a two-phase approach:
 
@@ -111,3 +225,5 @@ This OIDC-based approach offers several advantages:
 * [GitHub Actions Documentation on AWS OIDC](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
 * [AWS IAM OIDC Identity Providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html)
 * [AWS STS AssumeRoleWithWebIdentity](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html)
+* [Immutable subject claims for GitHub Actions OIDC tokens](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/) (changelog)
+* [GitHub REST API for OIDC subject claim customization](https://docs.github.com/en/rest/actions/oidc)

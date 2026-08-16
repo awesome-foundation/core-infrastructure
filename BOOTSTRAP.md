@@ -74,6 +74,8 @@ In the root account:
 
 This must be done manually first to bootstrap CI/CD.
 
+> **Check the subject claim format first.** GitHub issues OIDC tokens in a new format. This applies to every repository created, renamed, or transferred on or after July 15, 2026. The parameter below matches the old format only. Run `gh api /repos/OWNER/REPO/actions/oidc/customization/sub` and read `sub_claim_prefix`. If that value contains `@`, the repository uses the new format, and you have to widen the trust policy. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims).
+
 1. Log into the **root account** via AWS Console
 2. Go to **CloudFormation** → **Create stack**
 3. Upload `github_actions_oidc/github_actions.yml`
@@ -112,6 +114,8 @@ The workflow will:
 2. Deploy to all member accounts in the organization
 3. Set `TrustedGithubOrgOrRepo` to `your-github-org/*` (all org repos)
 4. Enable auto-deployment for any new accounts added to the organization
+
+The `your-github-org/*` value covers name-based tokens only. Repositories on the new subject claim format present `repo:your-github-org@ORG_ID/...`, which this value does not match. To cover both, edit the `sub` condition in `github_actions.yml` to accept a list of patterns. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#how-to-update-the-trust-policy).
 
 ### 2.4 Verify OIDC Roles
 
@@ -489,6 +493,9 @@ After completing the bootstrap, verify:
 1. Verify the OIDC provider exists in the target account
 2. Check the trusted repository/org matches your GitHub org
 3. Ensure the workflow has `id-token: write` permission
+4. Compare the subject claim format. Run `gh api /repos/OWNER/REPO/actions/oidc/customization/sub` and read `sub_claim_prefix`. A value that contains `@` means the repository uses the immutable format, and a name-based trust policy rejects it. The error text is `Not authorized to perform sts:AssumeRoleWithWebIdentity`. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims)
+
+A repository that worked last week and fails now is the common case here. A rename or a transfer moves the repository to the new format.
 
 ### StackSet Deployment Stuck
 
