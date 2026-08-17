@@ -5,5 +5,5 @@
   "awesome-haproxy": "1.0.0",
   "awesome-cloudflare-sg": "1.0.0",
   "aws_sso": "1.0.0",
-  "github_actions_oidc": "1.0.0"
+  "github_actions_oidc": "1.1.0"
 }
