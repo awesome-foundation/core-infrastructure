@@ -1,13 +1,13 @@
 # Bootstrap Guide: Setting Up a New Organization
 
-This guide walks through the complete setup of Awesome Foundation infrastructure in a new AWS Organization.
+This guide shows how to set up the Awesome Foundation infrastructure in a new AWS Organization.
 
 ## Prerequisites
 
 - AWS root account with Organizations enabled
 - GitHub organization with a repository for this infrastructure code
 - AWS CLI installed locally
-- Admin access to create GitHub organization variables/secrets
+- Administrator access, to create the GitHub organization variables and secrets
 
 ## Overview
 
@@ -41,11 +41,11 @@ The setup follows this order:
 
 1. Log into your root AWS account
 2. Go to **AWS Organizations** → **Create Organization**
-3. Enable all features (recommended)
+3. Enable all features. This is the recommended setting
 
 ### 1.2 Create Member Accounts
 
-Create three member accounts for the stage-based deployment model:
+Create three member accounts, one for each stage:
 
 | Account Name | Purpose | Email (example) |
 |--------------|---------|-----------------|
@@ -55,16 +55,16 @@ Create three member accounts for the stage-based deployment model:
 
 In AWS Organizations:
 1. Click **Add an AWS account** → **Create an AWS account**
-2. Enter account name and email
-3. Repeat for each environment
+2. Enter the account name and the email address
+3. Do this again for each environment
 
-Note the **Account IDs** - you'll need them later.
+Write down the **Account IDs**. You need them later.
 
 ### 1.3 Enable CloudFormation StackSets
 
 In the root account:
 1. Go to **CloudFormation** → **StackSets**
-2. If prompted, enable trusted access with AWS Organizations
+2. Enable trusted access with AWS Organizations, if the console asks for it
 
 ---
 
@@ -72,7 +72,7 @@ In the root account:
 
 ### 2.1 Deploy OIDC to Root Account (Manual)
 
-This must be done manually first to bootstrap CI/CD.
+Do this step by hand first. It bootstraps the CI/CD.
 
 GitHub issues OIDC tokens in a new format that carries permanent numeric IDs. This applies to every repository created, renamed, or transferred on or after July 15, 2026. The template takes one parameter per format, and it trusts every parameter that you set. Set both. See [github_actions_oidc/README.md](./github_actions_oidc/README.md#immutable-subject-claims).
 
@@ -98,7 +98,7 @@ arn:aws:iam::<ROOT_ACCOUNT_ID>:role/awesome-gha-allow-all-role
 
 ### 2.2 Configure Root Account Secret
 
-Before the StackSet workflow can run, you need to configure the root account role as a GitHub secret.
+Add the root account role as a GitHub secret before you run the StackSet workflow.
 
 Go to **GitHub** → **Organization Settings** → **Secrets and variables** → **Actions** → **Secrets**
 
@@ -110,13 +110,13 @@ Add this **organization secret**:
 
 ### 2.3 Deploy OIDC to Member Accounts via StackSet
 
-The StackSet deployment is automated via the `github_actions_oidc_stackset.yml` workflow.
+The `github_actions_oidc_stackset.yml` workflow deploys the StackSet.
 
-**Trigger deployment:**
-- Push any change to `github_actions_oidc/github_actions.yml` or the workflow file
-- Or manually trigger the workflow via GitHub Actions
+**To start the deployment:**
+- Push a change to `github_actions_oidc/github_actions.yml` or to the workflow file
+- Or start the workflow by hand from GitHub Actions
 
-The workflow will:
+The workflow does this work:
 1. Create/update a CloudFormation StackSet named `github-actions-oidc`
 2. Deploy to all member accounts in the organization
 3. Set `TrustedGithubOrgOrRepoImmutable` to `your-github-org@ORG_ID/*` (all org repos, new format)
@@ -127,7 +127,7 @@ Steps 3 and 4 need no manual input. The workflow reads the organization name and
 
 ### 2.4 Verify OIDC Roles
 
-After StackSet deployment completes, verify the roles exist in each member account:
+After the StackSet deployment finishes, make sure that the role exists in each member account:
 
 ```bash
 # For each account, the role ARN will be:
@@ -140,7 +140,7 @@ arn:aws:iam::<PROD_ACCOUNT_ID>:role/awesome-gha-allow-all-role
 
 ## Phase 3: Configure GitHub Variables
 
-Configure GitHub organization variables so workflows can authenticate to each account.
+Add the GitHub organization variables. The workflows need them to authenticate to each account.
 
 ### 3.1 Add Organization Variables
 
@@ -159,7 +159,7 @@ Add these **organization variables**:
 
 ### 3.2 Verify Root Account Secret
 
-The root account secret (`AWESOME_AWS_DEPLOY_ROLE_ROOT`) should already be configured from Phase 2.2. This secret is used by SSO and StackSet workflows.
+You added the root account secret, `AWESOME_AWS_DEPLOY_ROLE_ROOT`, in Phase 2.2. The SSO and StackSet workflows use it.
 
 ### 3.3 Verify GitHub Actions Access
 
@@ -204,25 +204,26 @@ jobs:
 
 ## Phase 4: Deploy Core Infrastructure
 
-With CI/CD working, deploy the foundational stacks.
+The CI/CD now works. Deploy the foundation stacks.
 
 ### 4.1 Update Domain Configuration
 
-> **Important:** We recommend using a dedicated infrastructure domain (e.g., `companyname.dev`) rather than your production domain (`companyname.com`). See [Why We Use a Dedicated Infrastructure Domain](./README.md#why-we-use-a-dedicated-infrastructure-domain) for the rationale.
+> **Important:** Use a dedicated infrastructure domain such as `companyname.dev`, and not your production domain `companyname.com`. [Why We Use a Dedicated Infrastructure Domain](./README.md#why-we-use-a-dedicated-infrastructure-domain) gives the reasons.
 
-Before deploying, update the domain in the VPC template:
+Set the domain in the VPC template before you deploy.
 
-1. Edit `awesome-vpc/awesome-vpc.yml` - update the Route53 hosted zone domain parameter - THIS CANNOT BE CHANGED LATER
+WARNING: you cannot change the Route53 hosted zone domain after the deployment. Set the correct value now.
 
-Search for `example.dev` and replace with your domain.
+1. Edit `awesome-vpc/awesome-vpc.yml` and set the Route53 hosted zone domain parameter
+2. Find `example.dev` and replace it with your domain
 
 ### 4.2 Deploy VPC Stack
 
-The VPC stack must be deployed first as other stacks depend on it.
+Deploy the VPC stack first. The other stacks need it.
 
-**Configure Availability Zones:**
+**Set the Availability Zones:**
 
-Before deploying, review the AZ configuration in `.github/workflows/vpc_deploy.yml`:
+Read the Availability Zone settings in `.github/workflows/vpc_deploy.yml` before you deploy:
 
 ```yaml
 env:
@@ -231,15 +232,15 @@ env:
   DEPLOY_AZ_THREE: 0  # Enable for 3-AZ redundancy
 ```
 
-> **Note:** The VPC stack can technically run in a single AZ, but the Web stack requires at least 2 AZs due to ALB requirements. Configure at minimum `DEPLOY_AZ_ONE: 1` and `DEPLOY_AZ_TWO: 1`.
+> **Note:** The VPC stack can run in one Availability Zone. The Web stack needs two, because the ALB needs two. Set `DEPLOY_AZ_ONE: 1` and `DEPLOY_AZ_TWO: 1` as the minimum.
 
-**Trigger deployment:**
-- Push changes to `awesome-vpc/` on the `master` branch, OR
-- Manually trigger the `vpc_deploy.yml` workflow
+**To start the deployment:**
+- Push changes to `awesome-vpc/` on the `master` branch, or
+- Or start the `vpc_deploy.yml` workflow by hand
 
-The workflow deploys to all three environments (dev, test, prod) in parallel.
+The workflow deploys to dev, test, and prod at the same time.
 
-**What gets created:**
+**The workflow creates:**
 - VPC with public/private subnets across configured AZs
 - Internet Gateway and NAT Gateways (one per enabled AZ)
 - Route tables and security groups
@@ -248,11 +249,11 @@ The workflow deploys to all three environments (dev, test, prod) in parallel.
 
 ### 4.3 Deploy Web Stack
 
-After VPC is deployed, deploy the web infrastructure.
+Deploy the web infrastructure after the VPC stack finishes.
 
 **Configure Availability Zones:**
 
-The Web stack must have matching AZ settings with the VPC stack. Review `.github/workflows/web_deploy.yml`:
+The Web stack must use the same Availability Zone settings as the VPC stack. Read `.github/workflows/web_deploy.yml`:
 
 ```yaml
 env:
@@ -261,13 +262,13 @@ env:
   DEPLOY_AZ_THREE: 0  # Must match VPC settings
 ```
 
-> **Important:** The Web stack requires a minimum of 2 AZs because AWS Application Load Balancers must have subnets in at least 2 different Availability Zones. Attempting to deploy with only 1 AZ will fail.
+> **Important:** The Web stack needs two Availability Zones. An AWS Application Load Balancer needs subnets in two different Availability Zones. A deployment with one Availability Zone fails.
 
-**Trigger deployment:**
-- Push changes to `awesome-web/` on the `master` branch, OR
-- Manually trigger the `web_deploy.yml` workflow
+**To start the deployment:**
+- Push changes to `awesome-web/` on the `master` branch, or
+- Or start the `web_deploy.yml` workflow by hand
 
-**What gets created:**
+**The workflow creates:**
 - ECS cluster (Fargate + Fargate Spot)
 - Public and private Application Load Balancers (with subnets in each enabled AZ)
 - ACM SSL certificate (wildcard for `*.stage.yourdomain.com`)
@@ -278,7 +279,7 @@ env:
 
 Build and push the HAProxy sidecar image to ECR:
 
-**Trigger deployment:**
+**To start the deployment:**
 - Push changes to `awesome-haproxy/` on the `master` branch
 
 This creates ECR repositories and pushes the HAProxy image to all environments.
@@ -348,14 +349,14 @@ github_username_1
 github_username_2
 ```
 
-SSH public keys are fetched from GitHub at container startup.
+The container reads the SSH public keys from GitHub when it starts.
 
 ### 6.2 Deploy Bastion Stack
 
-**Trigger deployment:**
+**To start the deployment:**
 - Push changes to `awesome-bastion/` on the `master` branch
 
-**What gets created:**
+**The workflow creates:**
 - ECS service running SSH containers
 - Network Load Balancer on port 22
 - DNS record: `bastion.stage.yourdomain.com`
@@ -418,10 +419,10 @@ Mappings:
 
 ### 7.3 Deploy SSO Stack
 
-**Trigger deployment:**
+**To start the deployment:**
 - Push changes to `aws_sso/aws_sso_access.yml` on the `master` branch
 
-**What gets created:**
+**The workflow creates:**
 - SSO Groups (Developers, Ops)
 - Permission Sets (DeveloperAccess, AdministratorAccess)
 - Account assignments linking groups to accounts
@@ -508,19 +509,19 @@ A repository that worked last week and fails now is the common case here. A rena
 ### StackSet Deployment Stuck
 
 1. Check CloudFormation StackSet operations in root account
-2. Verify Organizations trusted access is enabled
+2. Make sure that trusted access with AWS Organizations is on
 3. Check individual stack instances for errors
 
 ### VPC Stack Fails
 
 1. Check for CIDR conflicts with existing VPCs
 2. Verify you have sufficient Elastic IP quota for NAT Gateways
-3. Check Route53 hosted zone doesn't already exist
+3. Make sure that the Route53 hosted zone does not exist yet
 
 ### SSL Certificate Stuck in Pending
 
 1. Verify Route53 hosted zone is authoritative for the domain
-2. Check DNS validation records were created
+2. Make sure that the workflow created the DNS validation records
 3. If using external DNS, add the CNAME records manually
 
 ---

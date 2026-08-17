@@ -2,9 +2,9 @@
 
 ## Overview
 
-The AWS SSO project manages user access to the AWS infrastructure using AWS IAM Identity Center (formerly AWS Single Sign-On).
+The AWS SSO project controls user access to the AWS infrastructure through AWS IAM Identity Center, which AWS previously called AWS Single Sign-On.
 
-It provides centralized user management, group-based access control, and automated user provisioning across all AWS accounts.
+It holds the users in one place, controls access by group, and creates the users in every AWS account.
 
 ## What This Creates
 
@@ -19,80 +19,80 @@ The `aws_sso_access.yml` CloudFormation template deploys:
   * Ops - For operations personnel
 
 * **Permission Sets**
-  * DeveloperAccess - Read-only access plus limited write permissions for common developer tasks
-  * AdministratorAccess - Full administrative privileges
+  * DeveloperAccess - Read access, plus the write permissions that a developer needs for daily work
+  * AdministratorAccess - Full administrative permissions
 
 * **Account Assignments**
-  * Maps groups to AWS accounts with appropriate permission sets
-  * Covers all cloud environments (Dev, Test, Prod, Root)
-  * Ensures consistent access control across the organization
+  * They connect each group to an AWS account through a permission set
+  * They cover the Dev, Test, Prod, and Root environments
+  * They keep access control the same across the organization
 
 ### 2. User Synchronization Tool
 
-The `sync_aws_sso_users.py` script provides:
+The `sync_aws_sso_users.py` script does this work:
 
-* **User Management**
-  * Reads user definitions from YAML file
-  * Creates new users in AWS SSO
-  * Deletes users no longer defined in the YAML
-  * Updates group memberships for existing users
+* **User management**
+  * It reads the user definitions from a YAML file
+  * It creates the new users in AWS SSO
+  * It deletes the users that the YAML file no longer lists
+  * It updates the group membership of the current users
 
-* **Automated Workflow**
-  * GitHub Actions triggers on changes to user definitions
-  * Provides dry-run capability for previewing changes
-  * Automated sync on merges to master
+* **Workflow**
+  * A change to the user definitions starts a GitHub Actions workflow
+  * A dry run shows the changes before you apply them
+  * A merge to master applies the changes
 
 ## How It Works
 
-The system works through two main processes:
+The system runs two processes:
 
 ### SSO Infrastructure Deployment
 
-1. The CloudFormation template defines the permissions infrastructure
-2. AWS IAM Identity Center groups are created to represent roles (Developers, Ops, etc.)
-3. Permission sets define the precise AWS permissions for each role
-4. Account assignments map groups to permission sets within each AWS account
+1. The CloudFormation template defines the permission infrastructure
+2. It creates an AWS IAM Identity Center group for each role, such as Developers and Ops
+3. A permission set holds the exact AWS permissions of each role
+4. An account assignment connects a group to a permission set inside one AWS account
 
 ### User Management Process
 
-1. Users are defined in `aws_sso_users.yml` with display names and group memberships
-2. When changes are made to this file, a GitHub Actions workflow runs
-3. On pull requests, a dry run shows what would happen without making changes
-4. When merged to master, the changes are applied to AWS Identity Center
-5. Users receive email invitations to set up their AWS SSO accounts
+1. `aws_sso_users.yml` lists each user with a display name and the groups they belong to
+2. A change to this file starts a GitHub Actions workflow
+3. On a pull request, a dry run shows the changes and applies nothing
+4. On a merge to master, the workflow applies the changes to AWS Identity Center
+5. Each user receives an email invitation to set up their AWS SSO account
 
 ## Deployment Pipeline
 
-The project uses GitHub Actions for deployment and user synchronization:
+GitHub Actions runs the deployment and the user sync:
 
 ### Infrastructure Deployment (aws_sso_setup.yml)
 
-* **Triggered on:**
-  * Changes to CloudFormation template or workflow file
-  * PRs with the "deploy-pr" label
-  * Merges to master branch
+* **This workflow starts on:**
+  * A change to the CloudFormation template or to the workflow file
+  * A pull request that carries the "deploy-pr" label
+  * A merge to the master branch
 
-* **Actions:**
-  * Authenticates to AWS using the Root account credentials
-  * Deploys CloudFormation stack using Rain
-  * Creates and updates groups, permission sets, and assignments
+* **It does this work:**
+  * It authenticates to AWS with the Root account credentials
+  * It deploys the CloudFormation stack with Rain
+  * It creates and updates the groups, permission sets, and assignments
 
 ### User Synchronization (aws_sso_users.yml)
 
-* **Triggered on:**
-  * Changes to user definition YAML or sync script
-  * Merges to master branch
+* **This workflow starts on:**
+  * A change to the user definition YAML file or to the sync script
+  * A merge to the master branch
 
-* **Actions:**
-  * On PRs: Performs dry run and posts results as PR comment
-  * On master: Applies changes to AWS Identity Center
-  * Creates, updates, or removes users and group memberships
+* **It does this work:**
+  * On a pull request, it runs a dry run and posts the result as a comment
+  * On master, it applies the changes to AWS Identity Center
+  * It creates, updates, and removes the users and their group membership
 
 ## User Configuration
 
 ### Local AWS CLI Configuration
 
-Example AWS profile configuration (`~/.aws/config`):
+An example AWS profile in `~/.aws/config`:
 
 ```
 [profile awesome-dev-developer]
@@ -116,13 +116,13 @@ sso_registration_scopes=sso:account:access
 ### AWS CLI Usage
 
 ```bash
-# Login to SSO (opens browser for authentication)
+# Log in to SSO. This opens a browser for the authentication
 aws sso login --profile awesome-dev-developer
 
-# Run commands with profile
+# Run a command with a profile
 aws s3 ls --profile awesome-dev-developer
 
-# Switch roles when needed
+# Change to a different role
 aws s3 ls --profile awesome-prod-admin
 ```
 
@@ -131,7 +131,7 @@ aws s3 ls --profile awesome-prod-admin
 To add or remove users:
 
 1. Edit the `aws_sso_users.yml` file
-2. Add or modify user entries in the format:
+2. Add or change a user entry. Use this format:
    ```yaml
    user@example.com:
      display_name: "Full Name"
@@ -144,12 +144,12 @@ To add or remove users:
 
 ## Permissions Overview
 
-* **Developers:** Read-only access to most services, with permissions for common development tasks like viewing logs, updating services, and deploying via CloudFormation
-* **Ops:** Full administrative access for infrastructure management
+* **Developers:** Read access to most services. They can also read logs, update services, and deploy through CloudFormation
+* **Ops:** Full administrative access, to manage the infrastructure
 
 ## Enabling Billing Access for SSO Users
 
-By default, AWS does not allow IAM users or roles (including SSO roles) to access billing information, even with AdministratorAccess. To enable billing access for SSO users:
+By default, AWS refuses billing information to an IAM user or role, and this includes an SSO role with AdministratorAccess. To give SSO users access to the billing information:
 
 1. Log into the **root account** using the root user credentials (not SSO)
 2. Click your account name in the top-right corner of the console
@@ -158,11 +158,11 @@ By default, AWS does not allow IAM users or roles (including SSO roles) to acces
 5. Click **Edit** and enable the setting
 6. Click **Update**
 
-Once enabled, users with AdministratorAccess will be able to view billing dashboards and cost management features.
+A user with AdministratorAccess can then read the billing dashboards and the cost management pages.
 
 ## Components
 
-* **aws_sso_access.yml:** CloudFormation template defining groups, permissions, and assignments
-* **sync_aws_sso_users.py:** Python script for syncing users with AWS Identity Center
-* **aws_sso_users.yml:** YAML file containing user definitions
-* **aws_config:** Example AWS CLI configuration for SSO profiles
+* **aws_sso_access.yml:** The CloudFormation template that defines the groups, permissions, and assignments
+* **sync_aws_sso_users.py:** The Python script that syncs the users with AWS Identity Center
+* **aws_sso_users.yml:** The YAML file that lists the users
+* **aws_config:** An example AWS CLI configuration for the SSO profiles

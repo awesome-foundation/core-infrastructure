@@ -2,93 +2,93 @@
 
 ## Overview
 
-The Awesome Web project provides the essential web application hosting infrastructure built on top of the Awesome VPC.
+The Awesome Web project gives web applications their hosting infrastructure. It builds on the Awesome VPC.
 
-It establishes public and private load balancers, SSL certificates, ECS clusters, and other required components to support containerized web applications in AWS.
+It creates public and private load balancers, SSL certificates, ECS clusters, and the other components that a container-based web application needs in AWS.
 
 ## What This Creates
 
 This CloudFormation template deploys:
 
 * **Load Balancers**
-  * Public-facing load balancer for internet traffic
-  * Private internal load balancer for service-to-service communication
-  * Automatic HTTP to HTTPS redirection for both load balancers
-  * SSL certificates for all domains with DNS validation
-  * S3 bucket for ALB access logs with proper bucket policies
+  * A public load balancer for internet traffic
+  * A private load balancer for traffic between services
+  * A redirect from HTTP to HTTPS on both load balancers
+  * SSL certificates for all domains, validated through DNS
+  * An S3 bucket for the ALB access logs, with the necessary bucket policies
 
 * **Elastic Container Service (ECS) Resources**
-  * Default ECS cluster with Fargate and Fargate_Spot capacity providers
+  * A default ECS cluster with the Fargate and Fargate_Spot capacity providers
   * Enhanced container insights for monitoring
-  * IAM roles for ECS services and task execution
+  * IAM roles for the ECS services and for task execution
 
 * **ALB Rule Priority Management**
-  * Lambda functions that automatically assign priorities to ALB listener rules
-  * Prevents rule priority conflicts when deploying multiple services
-  * Intelligent priority allocation in the valid range (1-50000)
+  * Lambda functions that give each ALB listener rule a priority
+  * No priority conflict when you deploy more than one service
+  * Priorities allocated inside the valid range of 1 to 50000
 
 * **DNS Records**
-  * Records for public load balancer (`lb-public.[stage].example.dev`)
-  * Records for private load balancer (`lb-private.[stage].example.dev`)
+  * Records for the public load balancer: `lb-public.[stage].example.dev`
+  * Records for the private load balancer: `lb-private.[stage].example.dev`
 
 ## Relation to Other Projects
 
-The Awesome Web stack builds on the foundation provided by Awesome VPC:
+The Awesome Web stack builds on Awesome VPC:
 
-* **Depends on Awesome VPC** for its network infrastructure:
-  * Uses public and private subnets from the VPC
-  * Leverages security groups defined in the VPC stack
-  * Integrates with the Route53 DNS zone created by the VPC stack
+* **It needs Awesome VPC** for the network infrastructure:
+  * It uses the public and private subnets of the VPC
+  * It uses the security groups from the VPC stack
+  * It adds records to the Route53 DNS zone that the VPC stack creates
 
-* **Provides Resources for Other Projects**:
-  * Any containerized application in the ecosystem can use this load balancer
-  * Exports various ARNs, names, and hostnames for use by other stacks
-  * Services like HAProxy, Redis Cache, and other web applications use this infrastructure
+* **It supplies resources to other projects**:
+  * Any container-based application can use this load balancer
+  * It exports ARNs, names, and hostnames for the other stacks
+  * HAProxy, Redis Cache, and the other web applications use this infrastructure
 
 ## Deployment Pipeline
 
-The project uses GitHub Actions for continuous integration and deployment:
+GitHub Actions runs the integration and deployment steps:
 
 * **Main Deployment (web_deploy.yml)**
-  * Triggered by changes to the Web template or workflow files on the master branch
-  * Deploys to all environments (dev, test, prod) using the aws-cloudformation/rain tool
-  * Authenticates to AWS using OIDC role-based authentication
+  * A change to the Web template or to a workflow file on the master branch starts this workflow
+  * It deploys to dev, test, and prod with the aws-cloudformation/rain tool
+  * It authenticates to AWS with an OIDC role
 
 * **Pull Request Workflow (web_pull_request.yml)**
-  * Creates and previews CloudFormation changesets when PRs are opened or updated
-  * Generates a Markdown table showing the planned resource changes
-  * Optionally deploys to dev environment when PR has the "deploy-pr" label
-  * Posts deployment logs back to the PR for visibility
+  * It creates a CloudFormation changeset when you open or update a pull request
+  * It writes a Markdown table of the planned resource changes
+  * It deploys to the dev environment when the pull request carries the "deploy-pr" label
+  * It posts the deployment log back to the pull request
 
 ## Initial Deployment
 
-The deployment process requires the Awesome VPC to be deployed first:
+Deploy the Awesome VPC stack first:
 
-1. Ensure the Awesome VPC stack is successfully deployed
+1. Make sure the Awesome VPC stack deployed without errors
 2. Deploy the Awesome Web stack using rain:
    ```
    rain deploy awesome-web.yml --yes
    ```
 
-3. After deployment, the stack exports several values used by other infrastructure components
+3. After the deployment, the stack exports the values that the other components import
 
 ## Special Components
 
 ### ALB Rule Priority Lambda
 
-The stack includes a Lambda function that solves the common problem of ALB rule priority conflicts:
+The stack holds a Lambda function that prevents ALB rule priority conflicts:
 
-* ALB listener rules need unique priority numbers
-* The Lambda automatically allocates unused priority numbers
-* Prevents deployment failures caused by priority conflicts
-* The Python script (allocate_alb_rule_priority.py) is embedded directly in the CloudFormation template
+* Each ALB listener rule needs a unique priority number
+* The Lambda function allocates a priority number that no other rule uses
+* A priority conflict can no longer fail the deployment
+* The CloudFormation template holds the Python script, `allocate_alb_rule_priority.py`
 
 ## Outputs
 
-The stack exports numerous resources used by other stacks:
+The stack exports many values for the other stacks to import:
 * Load balancer DNS names and listener ARNs
 * ECS cluster name and IAM roles
 * SSL certificate ARN
 * Lambda function ARNs for rule priority allocation
 
-These exported values enable other stacks to deploy applications using this web infrastructure without having to recreate these components.
+The other stacks import these values and deploy their applications on this web infrastructure. They do not create these components again.

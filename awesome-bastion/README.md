@@ -2,99 +2,99 @@
 
 ## Overview
 
-The Awesome Bastion project provides a secure SSH bastion host that enables developers to access private resources within the Awesome Foundation AWS environment, primarily databases. It deploys a containerized SSH server with a highly restricted shell that allows TCP forwarding while maintaining tight security controls.
+The Awesome Bastion project gives developers an SSH bastion host. Through it they reach the private resources in the Awesome Foundation AWS environment, and databases most of all. It deploys an SSH server in a container. The shell is restricted, and it permits TCP forwarding.
 
 ## What This Creates
 
 This CloudFormation template deploys:
 
 * **Containerized SSH Server**
-  * Based on Alpine Linux with minimal packages
-  * Runs in AWS Fargate (using Fargate Spot for cost optimization)
-  * Configured with strictly limited system permissions
-  * SSH access limited to authorized GitHub users
-  * TCP forwarding enabled for database connections
-  * Custom port (9022) to reduce scanning noise
+  * Built on Alpine Linux, with few packages
+  * Runs in AWS Fargate. Fargate Spot lowers the cost
+  * Holds strictly limited system permissions
+  * Accepts SSH connections from approved GitHub users only
+  * Permits TCP forwarding, for the database connections
+  * Listens on port 9022, which lowers the scanning noise
 
 * **Network Load Balancer**
-  * Internet-facing for access from developer machines
-  * Preserves client IP addresses for security
-  * TCP health checks on port 9022
-  * Fast connection draining (5 seconds)
+  * Faces the internet, so a developer machine can reach it
+  * Keeps the client IP address, which helps the security logs
+  * Runs TCP health checks on port 9022
+  * Drains a connection in 5 seconds
 
 * **Security and Permissions**
-  * Requires SSH key authentication (no password access)
-  * Security groups limited to necessary access
-  * IAM role with permissions to access SSM parameters
-  * CloudWatch Logs configuration with 90-day retention
+  * Accepts SSH key authentication only, and refuses passwords
+  * Uses security groups that permit the necessary traffic only
+  * Uses an IAM role that can read the SSM parameters
+  * Keeps the CloudWatch logs for 90 days
 
 * **DNS Record**
-  * Friendly hostname: `bastion.[stage].example.dev`
-  * Makes connection easier than remembering IP addresses
+  * A readable hostname: `bastion.[stage].example.dev`
+  * You connect to a name, and you do not have to remember an IP address
 
 ## How It Works
 
-The architecture follows these key principles:
+The architecture rests on three principles:
 
 1. **Container Security**
-   * Uses a stripped-down Alpine Linux image
-   * SSH daemon configured to deny password authentication
-   * Hardening script removes unnecessary tools and commands
-   * Single unprivileged user (`dev`) with no password
+   * It uses a reduced Alpine Linux image
+   * The SSH daemon refuses password authentication
+   * A hardening script removes the tools and commands that nobody needs
+   * It holds one unprivileged user, `dev`, with no password
 
 2. **User Management**
-   * Authorized users defined in the `authorized_users` file (GitHub usernames)
-   * Public SSH keys fetched from GitHub at container startup
-   * Access is automatically granted/revoked by updating the file and redeploying
+   * The `authorized_users` file lists the GitHub username of each approved user
+   * The container reads the public SSH keys from GitHub when it starts
+   * To grant or remove access, edit that file and deploy again
 
 3. **Network Design**
-   * Containers run in private subnets
-   * Network Load Balancer in public subnets forwards SSH traffic
-   * Security groups restrict traffic to the SSH port
-   * Client IP preservation for access logging
+   * The containers run in the private subnets
+   * A Network Load Balancer in the public subnets forwards the SSH traffic
+   * The security groups permit traffic to the SSH port only
+   * The load balancer keeps the client IP address for the access log
 
 ## Relation to Other Projects
 
-The Awesome Bastion stack integrates with other infrastructure components:
+The Awesome Bastion stack works with the other infrastructure components:
 
-* **Depends on Awesome VPC** for its network infrastructure:
-  * Uses public and private subnets
-  * Inherits security groups
-  * Utilizes the Route53 DNS zone
+* **It needs Awesome VPC** for the network infrastructure:
+  * It uses the public and private subnets
+  * It uses the security groups
+  * It adds a record to the Route53 DNS zone
 
-* **Depends on Awesome Web** for its base ECS infrastructure:
-  * Uses the ECS cluster created by Awesome Web
-  * Leverages the ECS task execution role
+* **It needs Awesome Web** for the ECS infrastructure:
+  * It uses the ECS cluster that Awesome Web creates
+  * It uses the ECS task execution role
 
-* **Provides Access to**:
+* **It gives access to**:
   * RDS databases
   * ElastiCache Redis instances
-  * Legacy systems via SSH forwarding
-  * Any other TCP-based services in private subnets
+  * Legacy systems, through SSH forwarding
+  * Any other TCP service in the private subnets
 
 ## Deployment Pipeline
 
-The project uses GitHub Actions for continuous integration and deployment:
+GitHub Actions runs the integration and deployment steps:
 
 * **Main Deployment (bastion_deploy.yml)**
-  * Triggered by changes to the bastion files or workflow files on the master branch
-  * Builds and pushes a Docker image to ECR
-  * Deploys to all environments (dev, test, prod) using the aws-cloudformation/rain tool
-  * Authenticates to AWS using OIDC role-based authentication
+  * A change to a bastion file or to a workflow file on the master branch starts this workflow
+  * It builds a Docker image and pushes it to ECR
+  * It deploys to dev, test, and prod with the aws-cloudformation/rain tool
+  * It authenticates to AWS with an OIDC role
 
 * **Pull Request Workflow (bastion_pull_request.yml)**
-  * Similar process but only deploys to dev environment
-  * Enables testing changes before merging to master
+  * It repeats the same steps, but it deploys to the dev environment only
+  * You can test a change there before you merge to master
 
 * **Shared Workflow (bastion_shared_workflow.yml)**
-  * Reusable workflow used by both main and PR pipelines
-  * Handles Docker build, ECR push, and CloudFormation deployment
+  * Both of the workflows above call this one
+  * It builds the Docker image, pushes it to ECR, and deploys the CloudFormation stack
 
 ## Usage
 
 ### Configuration
 
-Due to the ephemeral nature of the containers, host keys change with each deployment. To avoid SSH strict host key checking failures, add this to your `~/.ssh/config`:
+The containers are temporary, so the host key changes at each deployment. Strict host key checking then fails. To prevent this, add these lines to your `~/.ssh/config`:
 
 ```
 Host bastion.*.example.dev
@@ -119,27 +119,27 @@ ssh -L 5432:database.internal:5432 bastion.dev.example.dev
 
 For Windows users with DataGrip:
 
-1. Create an SSH key using `ssh-keygen` in Windows command prompt
+1. Create an SSH key with `ssh-keygen` in the Windows command prompt
 2. Add your public key to the `authorized_users` file
-3. Configure DataGrip SSH tunnel:
-   - Use "OpenSSH config and authentication agent"
+3. Set up the DataGrip SSH tunnel:
+   - Select "OpenSSH config and authentication agent"
    - SSH user: `dev`
    - SSH hostname: `bastion.dev.example.dev` or `bastion.prod.example.dev`
 
 ### Adding New Users
 
-1. Get the user's GitHub username
+1. Get the GitHub username of the user
 2. Add it to the `authorized_users` file
-3. Commit and push the change to master
-4. The GitHub Actions workflow will rebuild and redeploy the container
+3. Commit the change and push it to master
+4. The GitHub Actions workflow builds the container again and deploys it
 
-Note that this process will terminate all active SSH sessions as the container is replaced.
+NOTE: this replaces the container, and it closes every open SSH session.
 
 ## Components
 
-* **Dockerfile**: Defines the container image with SSH configuration
-* **docker-entrypoint.sh**: Fetches user SSH keys from GitHub
-* **authorized_users**: List of GitHub usernames granted access
-* **harden.sh**: Security hardening script for the container
-* **ssh.config**: SSH client configuration for connecting to other hosts
-* **awesome-bastion.yml**: CloudFormation template for infrastructure
+* **Dockerfile**: Defines the container image and the SSH configuration
+* **docker-entrypoint.sh**: Reads the user SSH keys from GitHub
+* **authorized_users**: Lists the GitHub username of each approved user
+* **harden.sh**: Hardens the container
+* **ssh.config**: The SSH client configuration, to connect to the other hosts
+* **awesome-bastion.yml**: The CloudFormation template for the infrastructure

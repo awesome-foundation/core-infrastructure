@@ -2,45 +2,45 @@
 
 ## Overview
 
-The GitHub Actions OIDC (OpenID Connect) project configures secure, password-less authentication between GitHub Actions workflows and AWS environments. It eliminates the need for storing long-lived AWS credentials in GitHub secrets by using a trust relationship based on short-lived tokens and identity federation.
+The GitHub Actions OIDC (OpenID Connect) project sets up authentication between GitHub Actions workflows and AWS environments. It uses no password. Identity federation and short-lived tokens replace the long-lived AWS credentials that a GitHub secret would otherwise hold.
 
 ## What This Creates
 
 This CloudFormation template (`github_actions.yml`) deploys:
 
 * **OIDC Identity Provider**
-  * Configures AWS to trust the GitHub Actions OIDC provider
-  * Uses GitHub's token issuer URL and thumbprints for validation
-  * Enables federated authentication from GitHub workflows
+  * Tells AWS to trust the GitHub Actions OIDC provider
+  * Validates the token against the issuer URL and the thumbprints from GitHub
+  * Lets a GitHub workflow authenticate through identity federation
 
 * **IAM Role**
   * Creates a role that GitHub Actions can assume through OIDC
-  * Defines trust conditions based on GitHub repository identity
-  * Grants administrative permissions to deployed resources
+  * Holds trust conditions that test the identity of the GitHub repository
+  * Gives administrative permissions on the deployed resources
 
 * **Security Controls**
-  * Limits session duration to 1 hour to reduce risk exposure
-  * Uses conditional policy statements to restrict access by repository/organization
-  * Configurable scope: single repository or entire organization
+  * Limits a session to 1 hour, which lowers the risk
+  * Uses policy conditions to limit access to one repository or one organization
+  * Takes a scope of one repository, or of the full organization
 
 ## How It Works
 
 The OIDC integration follows this process:
 
 1. **Identity Federation Setup**
-   * AWS is configured to trust tokens from GitHub's OIDC provider
-   * The OIDC provider is registered with specific thumbprints for validation
+   * AWS trusts the tokens from the GitHub OIDC provider
+   * The OIDC provider carries the thumbprints that AWS validates against
 
 2. **Trust Relationship**
-   * IAM roles include conditions that validate the GitHub workflow's identity
-   * Role assumption is only allowed if the repository name matches the pattern
-   * Additional context like branch or environment can be used for tighter controls
+   * The IAM role holds conditions that test the identity of the GitHub workflow
+   * A workflow can assume the role only when its subject claim matches the pattern
+   * Other claims, such as the branch or the environment, can make the test stricter
 
 3. **Workflow Authorization**
-   * When a GitHub Action runs, it requests a token from GitHub's OIDC provider
-   * GitHub provides a signed JWT with claims about the workflow's identity
-   * The workflow presents this token to AWS STS to assume the IAM role
-   * AWS validates the token and grants temporary credentials if conditions match
+   * A GitHub Action asks the GitHub OIDC provider for a token
+   * GitHub returns a signed JWT that holds the claims about the workflow
+   * The workflow sends this token to AWS STS, and asks to assume the IAM role
+   * AWS validates the token. If the conditions match, AWS returns temporary credentials
 
 ## Immutable Subject Claims
 
@@ -182,22 +182,22 @@ Set `TrustedGithubOrgOrRepoImmutable` and deploy the stack before you opt in. A 
 
 Read [Immutable Subject Claims](#immutable-subject-claims) before you set the trust parameters.
 
-The template is deployed using a two-phase approach:
+Deploy the template in two phases:
 
 ### Phase 1: Root Account (Manual)
 
-The root account deployment must be done manually to bootstrap CI/CD:
+Deploy to the root account by hand. This bootstraps the CI/CD:
 
 1. Deploy via CloudFormation Console
 2. Parameter `TrustedGithubOrgOrRepoImmutable`: `your-org@ORG_ID/core-infrastructure@REPO_ID` (specific repo only)
 3. Parameter `TrustedGithubOrgOrRepo`: `your-org/core-infrastructure` (the same repo, old format)
-4. This creates the initial trust that allows the core-infrastructure repo to deploy further infrastructure
+4. This creates the first trust relationship. The core-infrastructure repo can then deploy the rest of the infrastructure
 
 Read `ORG_ID` and `REPO_ID` with `gh api /repos/your-org/core-infrastructure --jq '.owner.id, .id'`.
 
 ### Phase 2: Member Accounts (Automated via StackSet)
 
-Once the root account has OIDC configured, the `github_actions_oidc_stackset.yml` workflow automatically:
+After the root account holds the OIDC configuration, the `github_actions_oidc_stackset.yml` workflow does this work:
 
 1. Creates/updates a CloudFormation StackSet
 2. Deploys to all member accounts in the organization
@@ -207,13 +207,13 @@ Once the root account has OIDC configured, the `github_actions_oidc_stackset.yml
 
 The workflow reads the organization name and ID from the `github.repository_owner` and `github.repository_owner_id` context values, so both parameters need no manual step.
 
-This approach ensures:
-* **Root account**: Restricted to only the core-infrastructure repository
-* **Member accounts**: Accessible by all repositories in the GitHub organization
+The result:
+* **Root account**: The core-infrastructure repository only
+* **Member accounts**: Every repository in the GitHub organization
 
 ## Integration with GitHub Workflows
 
-To use this in a GitHub Actions workflow:
+Add these lines to a GitHub Actions workflow:
 
 ```yaml
 permissions:
@@ -237,18 +237,18 @@ jobs:
 
 ## Security Benefits
 
-This OIDC-based approach offers several advantages:
+OIDC gives these advantages:
 
-* **No Stored Secrets**: Eliminates long-lived access keys in GitHub secrets
-* **Short-lived Credentials**: Temporary credentials expire after the session ends
-* **Fine-grained Control**: Policies can be adjusted based on repository, branch, or other attributes
-* **Auditability**: Actions performed through assumed roles are clearly attributed in AWS CloudTrail
-* **Reduced Credential Management**: No need for credential rotation or management
+* **No stored secrets**: No GitHub secret holds a long-lived access key
+* **Short-lived credentials**: The credentials expire at the end of the session
+* **Precise control**: A policy can test the repository, the branch, and other claims
+* **Audit**: AWS CloudTrail names the assumed role behind each action
+* **Less credential work**: Nobody rotates or manages a credential
 
 ## Components
 
-* **github_actions.yml**: CloudFormation template for OIDC provider and IAM role
-* **github_actions_oidc_stackset.yml**: GitHub Actions workflow for StackSet deployment
+* **github_actions.yml**: The CloudFormation template that creates the OIDC provider and the IAM role
+* **github_actions_oidc_stackset.yml**: The GitHub Actions workflow that deploys the StackSet
 
 ## References
 

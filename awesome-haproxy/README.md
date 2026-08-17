@@ -2,62 +2,62 @@
 
 ## Overview
 
-The Awesome Foundation HAProxy sidecar is a specialized container designed to run alongside web applications in ECS Fargate services. Its primary purpose is to produce standardized, structured JSON logs for all HTTP traffic, allowing for consistent monitoring, debugging, and analytics across all applications, including pre-production environments.
+The Awesome Foundation HAProxy sidecar is a container that runs next to a web application in an ECS Fargate service. It writes structured JSON logs for all HTTP traffic. The log format stays the same across every application, and across the pre-production environments, so monitoring, debugging, and analysis stay the same too.
 
 ## What This Does
 
 This HAProxy-based sidecar provides:
 
-* **Structured JSON Logging** - Captures detailed request and response data in a standardized JSON format
-* **Request Tracking** - Assigns unique IDs to each request for tracing across systems
-* **Performance Metrics** - Records timing data for requests through various stages of processing
-* **Header Capture** - Logs important HTTP headers for debugging, including trace IDs and user agents
-* **Simple Proxying** - Routes requests to the application container on the same host
+* **Structured JSON logging** - It records the request and response data in one JSON format
+* **Request tracking** - It gives each request a unique ID, which lets you trace the request across systems
+* **Performance metrics** - It records the time that a request spends in each stage
+* **Header capture** - It logs the HTTP headers that help you debug, such as the trace ID and the user agent
+* **Proxying** - It sends the request to the application container on the same host
 
 ## Key Features
 
 ### Logging Capabilities
 
-The sidecar generates comprehensive JSON logs that include:
+The sidecar writes a JSON log that holds:
 
-* Connection details (active connections, frontend/backend connections)
-* Queue information
-* Detailed timing metrics (request queue time, wait time, connect time, response time)
-* Network information (client IP, ports)
-* Full request details (method, URI, protocol, headers)
-* Response data (status code, size, headers)
-* Unique request IDs for tracing
+* The connection counts, for the active, frontend, and backend connections
+* The queue data
+* The times: queue time, wait time, connect time, and response time
+* The network data: client IP address and ports
+* The request: method, URI, protocol, and headers
+* The response: status code, size, and headers
+* A unique request ID, for tracing
 
 ### Runtime Configuration
 
-The container supports configuration through environment variables:
+Environment variables configure the container:
 
-* `HAPROXY_LISTEN_PORT` - Port on which HAProxy listens (default: 8000)
-* `HAPROXY_APP_NAME` - Name of the application (default: haproxy)
-* `HAPROXY_APP_HOST` - Host where the application runs (default: 127.0.0.1)
-* `HAPROXY_APP_PORT` - Port on which the application listens (default: 8080)
-* `HAPROXY_TIMEOUT_SERVER` - Server timeout (default: 1m)
-* `HAPROXY_HTTP_BUFFER_REQUEST` - Enable HTTP request buffering for slow POST attack mitigation
-* `AWESOME_DEV_DOMAIN` - Domain suffix for dev environments that should have noindex/nofollow headers (default: example.dev)
+* `HAPROXY_LISTEN_PORT` - The port that HAProxy listens on. Default: 8000
+* `HAPROXY_APP_NAME` - The name of the application. Default: haproxy
+* `HAPROXY_APP_HOST` - The host that the application runs on. Default: 127.0.0.1
+* `HAPROXY_APP_PORT` - The port that the application listens on. Default: 8080
+* `HAPROXY_TIMEOUT_SERVER` - The server timeout. Default: 1m
+* `HAPROXY_HTTP_BUFFER_REQUEST` - Turns on HTTP request buffering, which limits a slow POST attack
+* `AWESOME_DEV_DOMAIN` - The domain suffix of the dev environments. HAProxy adds noindex and nofollow headers to these. Default: example.dev
 
 ### Additional Features
 
-* **Health Check** - Provides `/_haproxy_health_check` endpoint for load balancer health checks
-* **Prometheus Metrics** - Exposes metrics on port 9000 for monitoring
-* **HAProxy Stats** - Provides HAProxy stats on port 9090
-* **Auto-generated Config** - Uses templating at runtime to generate the HAProxy configuration
+* **Health check** - It answers on `/_haproxy_health_check`, for the load balancer health checks
+* **Prometheus metrics** - It publishes the metrics on port 9000
+* **HAProxy stats** - It publishes the HAProxy stats on port 9090
+* **Generated configuration** - It builds the HAProxy configuration from a template when it starts
 
 ## How It Works
 
-1. The container runs a modified version of HAProxy based on Alpine Linux
-2. At startup, the `docker-entrypoint.sh` script uses the p2 templating tool to generate the HAProxy configuration from `haproxy.cfg.j2` using environment variables
-3. HAProxy starts and listens on the configured port
-4. All requests are forwarded to the application container while capturing detailed logs
-5. Logs are written to stdout in JSON format, which is captured by AWS CloudWatch
+1. The container runs a modified HAProxy, built on Alpine Linux
+2. At startup, the `docker-entrypoint.sh` script runs the p2 templating tool. p2 reads the environment variables and builds the HAProxy configuration from `haproxy.cfg.j2`
+3. HAProxy starts, and listens on the configured port
+4. HAProxy sends each request to the application container, and logs the details
+5. HAProxy writes the JSON logs to stdout, and AWS CloudWatch collects them
 
 ### Deployment Model
 
-The sidecar is deployed as a second container in the same ECS task as the application:
+The sidecar runs as a second container inside the ECS task of the application:
 
 ```
 ┌───────────────────────────────┐
@@ -72,25 +72,25 @@ The sidecar is deployed as a second container in the same ECS task as the applic
 ```
 
 * External traffic reaches the HAProxy sidecar on port 8000
-* HAProxy forwards requests to the application on localhost:8080
-* Logs from HAProxy flow to CloudWatch Logs
+* HAProxy sends the request to the application on localhost:8080
+* The HAProxy logs go to CloudWatch Logs
 
 ## Relation to Other Projects
 
-This sidecar is closely related to:
+This sidecar works with:
 
-* **Awesome Web** - Works with applications deployed through the Awesome Web infrastructure
-* **ECS Applications** - Designed to run alongside any ECS Fargate-based application
+* **Awesome Web** - The applications that run on the Awesome Web infrastructure
+* **ECS applications** - Any application that runs on ECS Fargate
 
 ## Deployment Pipeline
 
-The project uses GitHub Actions for continuous integration and deployment:
+GitHub Actions runs the integration and deployment steps:
 
 * **Build Process (awesome_haproxy_build.yml)**
-  * Triggered by changes to files in the awesome-haproxy directory or workflow file
-  * Builds and pushes Docker images to ECR in all environments (dev, test, prod)
-  * For pull requests, only deploys to dev and test by default
-  * Requires the "deploy-pr" label to deploy to production during PR
+  * A change to a file in the awesome-haproxy directory, or to the workflow file, starts this workflow
+  * It builds the Docker images and pushes them to ECR in dev, test, and prod
+  * From a pull request, it deploys to dev and test only
+  * To deploy to production from a pull request, add the "deploy-pr" label
 
 ## Using with Applications
 
@@ -129,12 +129,12 @@ To use this sidecar with an application:
    }
    ```
 
-2. Configure your load balancer to route traffic to the HAProxy port (8000)
-3. Ensure your application listens on the port specified in `HAPROXY_APP_PORT`
+2. Set your load balancer to send the traffic to the HAProxy port, 8000
+3. Make sure that your application listens on the port in `HAPROXY_APP_PORT`
 
 ## Querying Logs
 
-The logs can be queried using CloudWatch Logs Insights, for example:
+CloudWatch Logs Insights reads these logs. For example:
 
 ```sql
 fields @timestamp,
@@ -157,8 +157,8 @@ fields @timestamp,
 
 ## Components
 
-* **Dockerfile** - Defines the container image based on haproxytech/haproxy-alpine:3.0
-* **haproxy.cfg.j2** - Template for HAProxy configuration with advanced logging setup
-* **log-format.json** - JSON structure defining the log format
-* **docker-entrypoint.sh** - Script that runs at container startup to process templates
-* **awesome_haproxy_build.yml** - GitHub Actions workflow for building and pushing the image
+* **Dockerfile** - Defines the container image, built on haproxytech/haproxy-alpine:3.0
+* **haproxy.cfg.j2** - The template for the HAProxy configuration, including the logging setup
+* **log-format.json** - The JSON structure of the log format
+* **docker-entrypoint.sh** - The script that processes the templates when the container starts
+* **awesome_haproxy_build.yml** - The GitHub Actions workflow that builds the image and pushes it
