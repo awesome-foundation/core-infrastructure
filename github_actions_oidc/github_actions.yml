@@ -16,9 +16,28 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: OIDC integration from Github Actions to access AWS resources
 
 Parameters:
+  TrustedGithubOrgOrRepoImmutable:
+    Type: String
+    Default: ''
+    Description: >-
+      Preferred. The GitHub organization or repository in the immutable subject claim format,
+      which carries permanent numeric IDs (e.g., awesome-foundation@144436715/* or
+      awesome-foundation@144436715/core-infrastructure@1109355301). GitHub issues tokens in this
+      format for every repository created, renamed, or transferred on or after 2026-07-15.
+      Read the exact value from `gh api /repos/OWNER/REPO/actions/oidc/customization/sub`.
+      Never replace a numeric ID with a wildcard, because org-name* also matches org-name-attacker.
+
   TrustedGithubOrgOrRepo:
     Type: String
-    Description: The GitHub organization or repository in the format owner/repo (e.g., awesome-foundation/* or awesome-foundation/core-infrastructure)
+    Default: ''
+    Description: >-
+      Legacy name-based format, in the format owner/repo (e.g., awesome-foundation/* or
+      awesome-foundation/core-infrastructure). Keep this set until every repository uses the
+      immutable format, then clear it. Set at least one of the two parameters.
+
+Conditions:
+  TrustImmutableSubject: !Not [!Equals [!Ref TrustedGithubOrgOrRepoImmutable, '']]
+  TrustLegacySubject: !Not [!Equals [!Ref TrustedGithubOrgOrRepo, '']]
 
 Resources:
   # GHA = GitHub Actions
@@ -48,7 +67,11 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${TrustedGithubOrgOrRepo}:*'
+                # IAM applies OR across the values. An empty parameter drops its entry.
+                # Both parameters empty leaves an empty list, and stack creation fails.
+                token.actions.githubusercontent.com:sub:
+                  - !If [TrustImmutableSubject, !Sub 'repo:${TrustedGithubOrgOrRepoImmutable}:*', !Ref "AWS::NoValue"]
+                  - !If [TrustLegacySubject, !Sub 'repo:${TrustedGithubOrgOrRepo}:*', !Ref "AWS::NoValue"]
       Policies:
         - PolicyName: 'awesome-gha-allow-all-policy'
           PolicyDocument:

@@ -74,7 +74,8 @@ jobs:
           if aws cloudformation create-stack-set \
             --stack-set-name $STACKSET_NAME \
             --template-body file://$TEMPLATE_PATH \
-            --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
+            --parameters ParameterKey=TrustedGithubOrgOrRepoImmutable,ParameterValue=${{ github.repository_owner }}@${{ github.repository_owner_id }}/* \
+                         ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
             --permission-model SERVICE_MANAGED \
             --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
             --capabilities CAPABILITY_NAMED_IAM \
@@ -86,7 +87,8 @@ jobs:
             aws cloudformation update-stack-set \
               --stack-set-name $STACKSET_NAME \
               --template-body file://$TEMPLATE_PATH \
-              --parameters ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
+              --parameters ParameterKey=TrustedGithubOrgOrRepoImmutable,ParameterValue=${{ github.repository_owner }}@${{ github.repository_owner_id }}/* \
+                           ParameterKey=TrustedGithubOrgOrRepo,ParameterValue=${{ github.repository_owner }}/* \
               --permission-model SERVICE_MANAGED \
               --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
               --capabilities CAPABILITY_NAMED_IAM \
