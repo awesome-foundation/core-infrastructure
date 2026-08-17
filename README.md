@@ -1,8 +1,8 @@
 # Awesome Foundation Core Infrastructure
 
-> **New to this repo?** See the [Bootstrap Guide](./BOOTSTRAP.md) for setting up infrastructure in a new AWS Organization.
+> **New to this repo?** Read the [Bootstrap Guide](./BOOTSTRAP.md). It shows how to set up the infrastructure in a new AWS Organization.
 
-This repository contains the Awesome Foundation core infrastructure components. The infrastructure is defined using CloudFormation templates, Docker containers, and automation scripts to ensure consistent deployments across development, testing, and production environments.
+This repository holds the Awesome Foundation core infrastructure components. CloudFormation templates, Docker containers, and automation scripts define the infrastructure. They keep deployments consistent across development, testing, and production environments.
 
 ## Architecture Overview
 
@@ -17,13 +17,13 @@ The infrastructure follows a layered approach:
 ### Foundation Layer
 
 - [**awesome-vpc**](./awesome-vpc/) - Core VPC infrastructure with public and private subnets, security groups, and network ACLs
-- [**awesome-cloudflare-sg**](./awesome-cloudflare-sg/) - Security group auto-synced with Cloudflare proxy IP ranges (Lambda + EventBridge)
+- [**awesome-cloudflare-sg**](./awesome-cloudflare-sg/) - Security group that a Lambda function and EventBridge keep in sync with the Cloudflare proxy IP ranges
 - [**github_actions_oidc**](./github_actions_oidc/) - OpenID Connect integration between GitHub Actions and AWS for secure, token-based CI/CD access
 
 ### Compute Layer
 
 - [**awesome-web**](./awesome-web/) - ECS cluster and application load balancers for web applications
-- [**awesome-haproxy**](./awesome-haproxy/) - HAProxy sidecar for ECS services providing structured logging and advanced routing
+- [**awesome-haproxy**](./awesome-haproxy/) - HAProxy sidecar that gives ECS services structured logging and more routing options
 
 ### Access Layer
 
@@ -32,30 +32,30 @@ The infrastructure follows a layered approach:
 
 ## Deployment Process
 
-Most components are deployed automatically via GitHub Actions workflows. The typical deployment flow is:
+GitHub Actions workflows deploy most components. The usual flow is:
 
-1. Changes are committed to a feature branch
-2. A pull request is created, which triggers workflow runs for preview/validation
-3. Merging to the master branch triggers deployment workflows across environments
-4. CloudFormation stacks are deployed using the Rain tool
+1. Commit your changes to a feature branch
+2. Open a pull request. This starts the workflows that preview and validate the changes
+3. Merge to the master branch. This starts the deployment workflows for each environment
+4. Rain deploys the CloudFormation stacks
 
 ## Environments
 
-The infrastructure is deployed across three environments:
+The infrastructure runs in three environments:
 
 - **Dev** - Development environment
 - **Test** - Testing/staging environment
 - **Prod** - Production environment
 
-Environment-specific configurations are managed through CloudFormation parameters, mappings, and condition statements.
+CloudFormation parameters, mappings, and conditions hold the settings for each environment.
 
 ## Availability Zone Configuration
 
-The infrastructure supports flexible deployment across 1-3 Availability Zones per environment. This is configured via environment variables in the GitHub Actions workflows.
+Each environment can use one, two, or three Availability Zones. Environment variables in the GitHub Actions workflows set the count.
 
 ### Configuration
 
-AZ deployment is controlled by three environment variables at the top of each workflow file:
+Three environment variables at the top of each workflow file control the Availability Zones:
 
 ```yaml
 env:
@@ -68,42 +68,42 @@ env:
 
 | Stack | Minimum AZs | Notes |
 |-------|-------------|-------|
-| **awesome-vpc** | 1 | Can run with a single AZ for cost savings in dev/test |
-| **awesome-web** | 2 | ALB requires subnets in at least 2 different AZs |
+| **awesome-vpc** | 1 | One AZ is enough, and it lowers the cost in dev and test |
+| **awesome-web** | 2 | The ALB needs subnets in two different AZs |
 
 ### Important: Keep Settings in Sync
 
-The VPC and Web stacks must have matching AZ configurations. The Web stack imports subnet references from the VPC stack - if a subnet doesn't exist, the deployment will fail.
+The VPC and Web stacks must use the same Availability Zone settings. The Web stack imports subnet references from the VPC stack. If a subnet does not exist, the deployment fails.
 
 **Valid configurations:**
 - AZ One + AZ Two (minimum for web workloads)
 - AZ One + AZ Two + AZ Three (full redundancy)
 
 **Invalid configuration:**
-- Single AZ only (VPC will deploy, but Web stack will fail)
+- One AZ only. The VPC stack deploys, then the Web stack fails
 
 ## Why We Use a Dedicated Infrastructure Domain
 
-This infrastructure uses a dedicated domain (e.g., `companyname.dev`) rather than subdomains of the production domain (e.g., `companyname.com`). This is an intentional architectural decision:
+This infrastructure uses a dedicated domain, for example `companyname.dev`, and not a subdomain of the production domain such as `companyname.com`. This is a deliberate decision:
 
 **Security Isolation**
 - A compromised dev/test environment cannot affect production DNS or hijack production cookies
-- Wildcard certificates for `*.dev.companyname.dev` are completely isolated from production
-- HSTS preload can be enabled on production without affecting development workflows
+- Wildcard certificates for `*.dev.companyname.dev` stay isolated from production
+- You can turn on HSTS preload in production without disturbing development work
 
 **Operational Independence**
-- Infrastructure DNS changes don't risk breaking the customer-facing website
-- Different teams can manage each domain independently (marketing owns `.com`, engineering owns `.dev`)
-- Aggressive TTLs and frequent changes in dev/test won't impact production caching
+- Infrastructure DNS changes cannot break the customer-facing website
+- Each team can manage its own domain. Marketing owns `.com`, and engineering owns `.dev`
+- Short TTLs and frequent changes in dev and test do not touch production caching
 
 **Clear Boundaries**
-- Developers immediately know which environment they're working with from the URL
-- Prevents accidental production access when copy-pasting URLs
-- Search engines won't index dev/test content even if `noindex` headers fail (different domain entirely)
+- The URL tells a developer which environment they are in
+- A copied URL cannot reach production by accident
+- Search engines do not index dev and test content, because the domain differs, even if a `noindex` header fails
 
 **Cookie Scope**
 - Authentication cookies on `.companyname.dev` cannot leak to or from `.companyname.com`
-- Each environment's cookies are naturally isolated
+- The browser keeps the cookies of each environment apart
 
 The convention is: `{service}.{stage}.{infra-domain}` (e.g., `api.prod.companyname.dev`).
 
@@ -114,13 +114,13 @@ The convention is: `{service}.{stage}.{infra-domain}` (e.g., `api.prod.companyna
 1. Create a new directory for your component
 2. Develop the CloudFormation template
 3. Create a GitHub Actions workflow in `.github/workflows/`
-4. Document the component with a thorough README.md
+4. Write a README.md that describes the component
 
 ### Updating Existing Components
 
 1. Make changes to the CloudFormation template
-2. Submit a PR to review changes via the preview capability
-3. Use appropriate PR labels to test deployments in lower environments before merging
+2. Open a pull request, and review the changes in the preview output
+3. Add the PR labels that deploy to the lower environments, and test there before you merge
 
 ## Repository Structure
 
@@ -138,17 +138,17 @@ core-infrastructure/
 ## Security Considerations
 
 - All sensitive resources use KMS encryption
-- Network resources use private subnets where appropriate
-- IAM roles follow least-privilege principles
-- Secrets are managed through GitHub Secrets and AWS SSM
+- Network resources use private subnets where they can
+- IAM roles hold the minimum permissions they need
+- GitHub Secrets and AWS SSM hold the secrets
 
 ## Best Practices
 
-1. Always use the CI/CD pipeline rather than manual deployments
-2. Document all components thoroughly
-3. Use PR previews to validate changes before merging
-4. Follow the established naming conventions
-5. Ensure backward compatibility when making changes
+1. Deploy through the CI/CD pipeline, not by hand
+2. Write a README.md for every component
+3. Read the PR preview before you merge
+4. Obey the naming conventions in this repository
+5. Keep changes backward compatible
 
 ## Further Reading
 
