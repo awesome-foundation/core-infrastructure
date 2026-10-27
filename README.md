@@ -37,7 +37,7 @@ GitHub Actions workflows deploy most components. The usual flow is:
 1. Commit your changes to a feature branch
 2. Open a pull request. This starts the workflows that preview and validate the changes
 3. Merge to the master branch. This starts the deployment workflows for each environment
-4. Rain deploys the CloudFormation stacks
+4. cfnrain deploys the CloudFormation stacks
 
 ## Environments
 
@@ -154,5 +154,5 @@ core-infrastructure/
 
 - [AWS CloudFormation Documentation](https://docs.aws.amazon.com/cloudformation/)
 - [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
-- [Rain CloudFormation Tool](https://github.com/aws-cloudformation/rain)
+- [cfnrain](https://github.com/awesome-foundation/cfnrain)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)

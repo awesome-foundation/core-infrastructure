@@ -42,7 +42,7 @@ GitHub Actions runs the integration and deployment steps:
 
 * **Main Deployment (vpc_deploy.yml)**
   * A change to the VPC template or to a workflow file on the master branch starts this workflow
-  * It deploys to dev, test, and prod with the aws-cloudformation/rain tool
+  * It deploys to dev, test, and prod with cfnrain
   * It authenticates to AWS with an OIDC role
 
 * **Pull Request Workflow (vpc_pull_request.yml)**
@@ -57,7 +57,7 @@ The first deployment needs two steps:
 
 1. Deploy the stack with required parameters:
    ```
-   rain deploy awesome-vpc.yml --yes --params Stage=dev,BaseDomainName=example.dev
+   cfnrain deploy awesome-vpc.yml --yes --params Stage=dev,BaseDomainName=example.dev
    ```
 
 2. Delegate the DNS zone to the AWS nameservers

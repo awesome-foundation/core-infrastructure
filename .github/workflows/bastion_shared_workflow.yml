@@ -75,7 +75,7 @@ jobs:
       - name: Push docker image to Amazon ECR
         run: docker push ${IMAGE_URL}
 
-      - uses: allixsenos/install-rain@v1
+      - uses: awesome-foundation/install-cfnrain@v1
 
       - name: Deploy Cloudformation template
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params ServiceName=bastion,ImageUrl=${IMAGE_URL}
+        run: cfnrain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params ServiceName=bastion,ImageUrl=${IMAGE_URL}

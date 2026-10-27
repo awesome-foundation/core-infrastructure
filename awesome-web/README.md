@@ -51,7 +51,7 @@ GitHub Actions runs the integration and deployment steps:
 
 * **Main Deployment (web_deploy.yml)**
   * A change to the Web template or to a workflow file on the master branch starts this workflow
-  * It deploys to dev, test, and prod with the aws-cloudformation/rain tool
+  * It deploys to dev, test, and prod with cfnrain
   * It authenticates to AWS with an OIDC role
 
 * **Pull Request Workflow (web_pull_request.yml)**
@@ -65,9 +65,9 @@ GitHub Actions runs the integration and deployment steps:
 Deploy the Awesome VPC stack first:
 
 1. Make sure the Awesome VPC stack deployed without errors
-2. Deploy the Awesome Web stack using rain:
+2. Deploy the Awesome Web stack with cfnrain:
    ```
-   rain deploy awesome-web.yml --yes
+   cfnrain deploy awesome-web.yml --yes
    ```
 
 3. After the deployment, the stack exports the values that the other components import
