@@ -61,7 +61,7 @@ jobs:
       - name: Test AWS access credentials for AWS account
         run: aws sts get-caller-identity
 
-      - uses: allixsenos/install-rain@v1
+      - uses: awesome-foundation/install-cfnrain@v1
 
       - name: Deploy Cloudformation template to AWS account
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y
+        run: cfnrain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y

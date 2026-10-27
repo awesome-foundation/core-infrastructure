@@ -54,10 +54,10 @@ jobs:
       - name: Test AWS access credentials for dev account
         run: aws sts get-caller-identity
 
-      - uses: allixsenos/install-rain@v1
+      - uses: awesome-foundation/install-cfnrain@v1
 
       - name: Create Cloudformation ChangeSet
-        run: rain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y | tee changeset-output.log
+        run: cfnrain deploy --no-exec $TEMPLATE_FILENAME $AWS_STACK_NAME -y | tee changeset-output.log
 
       - name: Get latest changeset ID
         run: aws cloudformation list-change-sets --stack-name $AWS_STACK_NAME --query 'Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetId' --output text > changeset-id
@@ -83,7 +83,7 @@ jobs:
 
       - name: Deploy Cloudformation template to dev account
         if: github.event.pull_request.state == 'open' && contains(github.event.pull_request.labels.*.name, 'deploy-pr')
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y | tee rain-deploy.log
+        run: cfnrain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y | tee rain-deploy.log
 
       - name: Rain Deploy log
         uses: thollander/actions-comment-pull-request@v2

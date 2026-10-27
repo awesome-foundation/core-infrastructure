@@ -74,7 +74,7 @@ GitHub Actions runs the deployment and the user sync:
 
 * **It does this work:**
   * It authenticates to AWS with the Root account credentials
-  * It deploys the CloudFormation stack with Rain
+  * It deploys the CloudFormation stack with cfnrain
   * It creates and updates the groups, permission sets, and assignments
 
 ### User Synchronization (aws_sso_users.yml)

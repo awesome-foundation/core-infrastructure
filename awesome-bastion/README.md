@@ -79,7 +79,7 @@ GitHub Actions runs the integration and deployment steps:
 * **Main Deployment (bastion_deploy.yml)**
   * A change to a bastion file or to a workflow file on the master branch starts this workflow
   * It builds a Docker image and pushes it to ECR
-  * It deploys to dev, test, and prod with the aws-cloudformation/rain tool
+  * It deploys to dev, test, and prod with cfnrain
   * It authenticates to AWS with an OIDC role
 
 * **Pull Request Workflow (bastion_pull_request.yml)**

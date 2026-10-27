@@ -15,10 +15,10 @@ Attach this security group to an ALB, or to any resource that must accept traffi
 
 ## Deploy
 
-This stack needs [Rain](https://github.com/aws-cloudformation/rain) for the `!Rain::Embed` directive. Rain puts the Python file into the template during the deployment.
+This stack needs [cfnrain](https://github.com/awesome-foundation/cfnrain) for the `!Rain::Embed` directive. cfnrain puts the Python file into the template during the deployment.
 
 ```bash
-rain deploy awesome-cloudflare-sg/awesome-cloudflare-sg.yml awesome-cloudflare-sg \
+cfnrain deploy awesome-cloudflare-sg/awesome-cloudflare-sg.yml awesome-cloudflare-sg \
   --params VpcStackName=awesome-vpc,NotificationEmail=ops@example.com
 ```
 

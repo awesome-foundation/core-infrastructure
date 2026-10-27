@@ -68,7 +68,7 @@ jobs:
       - name: Ensure ECS service-linked role exists
         run: aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com || true
 
-      - uses: allixsenos/install-rain@v1
+      - uses: awesome-foundation/install-cfnrain@v1
 
       - name: Deploy Cloudformation template
-        run: rain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE,DeployPublicALB=$DEPLOY_PUBLIC_ALB,DeployPrivateALB=$DEPLOY_PRIVATE_ALB
+        run: cfnrain deploy $TEMPLATE_FILENAME $AWS_STACK_NAME -y --params DeployAZOne=$DEPLOY_AZ_ONE,DeployAZTwo=$DEPLOY_AZ_TWO,DeployAZThree=$DEPLOY_AZ_THREE,DeployPublicALB=$DEPLOY_PUBLIC_ALB,DeployPrivateALB=$DEPLOY_PRIVATE_ALB
